@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Auth Models (NextAuth compatible)
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?   // null for OAuth users
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  memberships Membership[]
+  ownedOrganizations Organization[] @relation("OrgOwner")
+  usageRecords UsageRecord[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? 
+  access_token      String? 
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? 
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// Organization & Subscription Models
+// ============================================
+
+model Organization {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  logo            String?
+  ownerId         String
+  plan            String   @default("free") // free, starter, professional, enterprise
+  billingEmail    String?
+  stripeCustomerId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  owner           User     @relation("OrgOwner", fields: [ownerId], references: [id])
+  memberships     Membership[]
+  subscriptions   Subscription[]
+  leads           Lead[]
+  usageRecords    UsageRecord[]
+  invites         Invite[]
+
+  @@index([slug])
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  orgId     String
+  role      String   @default("analyst") // owner, admin, analyst, viewer
+  joinedAt  DateTime @default(now())
+  invitedBy String?
+  invitedEmail String?
+
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+}
+
+model Subscription {
+  id                  String   @id @default(cuid())
+  orgId               String
+  plan                String   // free, starter, professional, enterprise
+  status              String   @default("active") // active, past_due, canceled, trialing
+  currentPeriodStart  DateTime @default(now())
+  currentPeriodEnd    DateTime
+  creditsPerMonth     Int      @default(50)
+  creditsUsed         Int      @default(0)
+  maxMembers          Int      @default(1)
+  pricePerMonth       Int      @default(0) // in cents
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+}
+
+model UsageRecord {
+  id          String   @id @default(cuid())
+  orgId       String
+  userId      String
+  type        String   // discovery, export, ai_score, ai_outreach, ai_insights
+  description String?
+  creditsUsed Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// ============================================
+// Lead & CRM Models (existing, with org relation)
+// ============================================
+
+model Lead {
+  id                String    @id @default(cuid())
+  orgId             String
+  companyName       String
+  industry          String
+  website           String?
+  address           String?
+  city              String?
+  state             String?
+  country           String?
+  postalCode        String?
+  phone             String?
+  email             String?
+  linkedinUrl       String?
+  companySize       String?
+  estimatedRevenue  String?
+  employeeCount     Int?
+  googleRating      Float?
+  reviewCount       Int?
+  yearsInBusiness   Int?
+  businessCategory  String?
+  decisionMaker     String?
+  decisionMakerTitle String?
+  latitude          Float?
+  longitude         Float?
+
+  // AI fields
+  leadScore         Int       @default(0)
+  digitalMaturity   Int?
+  growthPotential   Int?
+  operationalComplexity Int?
+  dataVolumeIndicators Int?
+  marketingSophistication Int?
+  confidenceScore   Float?
+  urgencyScore      Int?
+  estimatedProjectValue String?
+
+  // AI generated text
+  businessSummary   String?   
+  painPoints        String?   
+  analyticsOpportunities String? 
+  recommendedServices String?  
+  potentialROI      String?   
+  outreachRecommendations String? 
+  aiInsights        String?   
+
+  // CRM fields
+  pipelineStage     String    @default("New")
+  isFavorite        Boolean   @default(false)
+  outreachStatus    String    @default("Not Contacted")
+  tags              String?
+
+  assignedTo        String?   // userId
+  createdBy         String?   // userId
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  notes     Note[]
+  activities Activity[]
+
+  @@index([orgId])
+  @@index([leadScore])
+  @@index([pipelineStage])
+  @@index([industry])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  content   String   
+  leadId    String
+  authorId  String?
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  type        String
+  title       String
+  description String?  
+  leadId      String
+  userId      String?
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+// ============================================
+// Invite Model
+// ============================================
+
+model Invite {
+  id          String   @id @default(cuid())
+  orgId       String
+  email       String
+  role        String   @default("analyst")
+  token       String   @unique
+  invitedBy   String
+  acceptedAt  DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+}
