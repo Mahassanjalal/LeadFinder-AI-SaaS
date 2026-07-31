@@ -377,17 +377,17 @@ export function LeadMap({ onSelectLead }: LeadMapProps) {
             <input
               type="range"
               min={0}
-              max={100}
+              max={Math.max(0, scoreFilter[1])}
               value={scoreFilter[0]}
-              onChange={(e) => setScoreFilter([Number(e.target.value), scoreFilter[1]])}
+              onChange={(e) => setScoreFilter([Math.min(Number(e.target.value), scoreFilter[1]), scoreFilter[1]])}
               className="w-full h-1.5 rounded-full appearance-none bg-emerald-500/20 accent-emerald-500 cursor-pointer"
             />
             <input
               type="range"
-              min={0}
+              min={Math.min(100, scoreFilter[0])}
               max={100}
               value={scoreFilter[1]}
-              onChange={(e) => setScoreFilter([scoreFilter[0], Number(e.target.value)])}
+              onChange={(e) => setScoreFilter([scoreFilter[0], Math.max(Number(e.target.value), scoreFilter[0])])}
               className="w-full h-1.5 rounded-full appearance-none bg-emerald-500/20 accent-emerald-500 cursor-pointer"
             />
           </div>

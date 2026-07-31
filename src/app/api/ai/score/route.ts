@@ -1,205 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { chatCompletion, parseAIJson } from '@/lib/ai-client';
-
-// ====== Deterministic fallback scoring algorithm ======
-
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash + char) | 0;
-  }
-  return Math.abs(hash);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function parseRevenue(value: string | null | undefined): number {
-  if (!value) return 0;
-  const cleaned = value.replace(/[^0-9.]/g, '');
-  const num = parseFloat(cleaned);
-  if (isNaN(num)) return 0;
-  const lower = value.toLowerCase();
-  if (lower.includes('billion') || lower.includes('b')) return num * 1_000_000_000;
-  if (lower.includes('million') || lower.includes('m')) return num * 1_000_000;
-  if (lower.includes('thousand') || lower.includes('k')) return num * 1_000;
-  return num;
-}
-
-const HIGH_FIT_INDUSTRIES = [
-  'technology', 'tech', 'software', 'saas', 'fintech', 'healthcare',
-  'finance', 'financial', 'e-commerce', 'ecommerce', 'retail',
-  'marketing', 'advertising', 'insurance', 'realestate', 'real estate',
-  'manufacturing', 'logistics', 'education', 'media',
-];
-
-function industryFitScore(industry: string | null | undefined): number {
-  if (!industry) return 50;
-  const lower = industry.toLowerCase();
-  for (const fit of HIGH_FIT_INDUSTRIES) {
-    if (lower.includes(fit)) return 80 + (hashCode(lower) % 20);
-  }
-  const mediumFit = ['consulting', 'legal', 'professional', 'hospitality', 'food', 'restaurant'];
-  for (const fit of mediumFit) {
-    if (lower.includes(fit)) return 55 + (hashCode(lower) % 20);
-  }
-  return 40 + (hashCode(lower) % 20);
-}
-
-function deterministicScore(lead: Record<string, unknown>) {
-  const companyName = (lead.companyName || lead.company_name || '') as string;
-  const industry = (lead.industry || '') as string;
-  const employeeCount = parseInt(String(lead.employeeCount ?? lead.employee_count ?? '0'), 10) || 0;
-  const revenueStr = (lead.estimatedRevenue || lead.revenue || '') as string;
-  const revenue = parseRevenue(revenueStr);
-  const googleRating = parseFloat(String(lead.googleRating ?? lead.google_rating ?? '0')) || 0;
-  const reviewCount = parseInt(String(lead.reviewCount ?? lead.review_count ?? '0'), 10) || 0;
-  const yearsInBusiness = parseInt(String(lead.yearsInBusiness ?? lead.years_in_business ?? '0'), 10) || 0;
-  const hasWebsite = !!(lead.website);
-  const hasLinkedin = !!(lead.linkedinUrl || lead.linkedin_url);
-  const hasEmail = !!(lead.email);
-  const hasPhone = !!(lead.phone);
-  const indLower = industry.toLowerCase();
-
-  // Digital Maturity
-  let digitalMaturity = 30;
-  if (hasWebsite) digitalMaturity += 20;
-  if (hasLinkedin) digitalMaturity += 15;
-  if (hasEmail) digitalMaturity += 10;
-  if (hasPhone) digitalMaturity += 5;
-  if (googleRating > 0) digitalMaturity += Math.min(10, Math.round(googleRating * 2));
-  if (reviewCount > 100) digitalMaturity += 10;
-  else if (reviewCount > 50) digitalMaturity += 7;
-  else if (reviewCount > 10) digitalMaturity += 5;
-  if (yearsInBusiness > 10) digitalMaturity += 5;
-  digitalMaturity += (hashCode(companyName) % 5);
-  digitalMaturity = clamp(digitalMaturity, 0, 100);
-
-  // Growth Potential
-  let growthPotential = 30;
-  if (revenue > 50_000_000) growthPotential += 25;
-  else if (revenue > 10_000_000) growthPotential += 20;
-  else if (revenue > 1_000_000) growthPotential += 15;
-  else if (revenue > 100_000) growthPotential += 8;
-  if (employeeCount > 500) growthPotential += 20;
-  else if (employeeCount > 100) growthPotential += 15;
-  else if (employeeCount > 50) growthPotential += 10;
-  else if (employeeCount > 10) growthPotential += 5;
-  if (yearsInBusiness > 0 && yearsInBusiness <= 3) growthPotential += 15;
-  else if (yearsInBusiness <= 7) growthPotential += 10;
-  else if (yearsInBusiness > 15) growthPotential -= 5;
-  growthPotential += Math.round((industryFitScore(industry) - 50) * 0.3);
-  growthPotential += (hashCode(companyName + 'growth') % 5);
-  growthPotential = clamp(growthPotential, 0, 100);
-
-  // Operational Complexity
-  let operationalComplexity = 20;
-  if (employeeCount > 1000) operationalComplexity += 30;
-  else if (employeeCount > 500) operationalComplexity += 25;
-  else if (employeeCount > 100) operationalComplexity += 18;
-  else if (employeeCount > 50) operationalComplexity += 12;
-  else if (employeeCount > 10) operationalComplexity += 5;
-  if (revenue > 100_000_000) operationalComplexity += 20;
-  else if (revenue > 10_000_000) operationalComplexity += 15;
-  else if (revenue > 1_000_000) operationalComplexity += 10;
-  if (yearsInBusiness > 10) operationalComplexity += 10;
-  else if (yearsInBusiness > 5) operationalComplexity += 5;
-  const complexIndustries = ['manufacturing', 'healthcare', 'finance', 'logistics', 'insurance'];
-  if (complexIndustries.some(ci => indLower.includes(ci))) operationalComplexity += 10;
-  operationalComplexity += (hashCode(companyName + 'ops') % 5);
-  operationalComplexity = clamp(operationalComplexity, 0, 100);
-
-  // Data Volume Indicators
-  let dataVolume = 15;
-  if (employeeCount > 1000) dataVolume += 30;
-  else if (employeeCount > 500) dataVolume += 25;
-  else if (employeeCount > 100) dataVolume += 15;
-  else if (employeeCount > 50) dataVolume += 8;
-  if (revenue > 50_000_000) dataVolume += 20;
-  else if (revenue > 10_000_000) dataVolume += 15;
-  else if (revenue > 1_000_000) dataVolume += 8;
-  if (reviewCount > 500) dataVolume += 15;
-  else if (reviewCount > 100) dataVolume += 10;
-  else if (reviewCount > 20) dataVolume += 5;
-  if (['technology', 'finance', 'healthcare', 'e-commerce', 'retail', 'software'].some(i => indLower.includes(i))) {
-    dataVolume += 10;
-  }
-  dataVolume += (hashCode(companyName + 'data') % 5);
-  dataVolume = clamp(dataVolume, 0, 100);
-
-  // Marketing Sophistication
-  let marketingSophistication = 20;
-  if (hasWebsite) marketingSophistication += 15;
-  if (hasLinkedin) marketingSophistication += 15;
-  if (googleRating > 4) marketingSophistication += 15;
-  else if (googleRating > 3) marketingSophistication += 10;
-  else if (googleRating > 0) marketingSophistication += 5;
-  if (reviewCount > 200) marketingSophistication += 15;
-  else if (reviewCount > 50) marketingSophistication += 10;
-  else if (reviewCount > 10) marketingSophistication += 5;
-  if (indLower.includes('marketing') || indLower.includes('advertising') || indLower.includes('media')) {
-    marketingSophistication += 15;
-  }
-  if (indLower.includes('e-commerce') || indLower.includes('ecommerce')) {
-    marketingSophistication += 10;
-  }
-  marketingSophistication += (hashCode(companyName + 'mktg') % 5);
-  marketingSophistication = clamp(marketingSophistication, 0, 100);
-
-  // Confidence Score
-  let dataPoints = 0;
-  const totalPossible = 8;
-  if (employeeCount > 0) dataPoints++;
-  if (revenue > 0) dataPoints++;
-  if (industry) dataPoints++;
-  if (googleRating > 0) dataPoints++;
-  if (reviewCount > 0) dataPoints++;
-  if (yearsInBusiness > 0) dataPoints++;
-  if (hasWebsite) dataPoints++;
-  if (hasEmail) dataPoints++;
-  const confidenceScore = parseFloat((dataPoints / totalPossible).toFixed(2));
-
-  // Urgency Score
-  let urgencyScore = 20;
-  if (employeeCount > 50 && employeeCount <= 200 && yearsInBusiness <= 5) urgencyScore += 25;
-  if (revenue > 5_000_000 && digitalMaturity < 50) urgencyScore += 20;
-  if (googleRating > 0 && googleRating < 3.5) urgencyScore += 15;
-  if (dataVolume > 60 && digitalMaturity < 50) urgencyScore += 15;
-  if (indLower.includes('tech') || indLower.includes('software') || indLower.includes('saas')) {
-    if (employeeCount > 20 && employeeCount < 500) urgencyScore += 10;
-  }
-  urgencyScore += (hashCode(companyName + 'urgency') % 6);
-  urgencyScore = clamp(urgencyScore, 0, 100);
-
-  // Overall Lead Score
-  const leadScore = clamp(
-    Math.round(
-      digitalMaturity * 0.10 +
-      growthPotential * 0.25 +
-      operationalComplexity * 0.15 +
-      dataVolume * 0.20 +
-      marketingSophistication * 0.10 +
-      industryFitScore(industry) * 0.10 +
-      urgencyScore * 0.10
-    ),
-    0,
-    100
-  );
-
-  return {
-    leadScore,
-    digitalMaturity,
-    growthPotential,
-    operationalComplexity,
-    dataVolumeIndicators: dataVolume,
-    marketingSophistication,
-    confidenceScore,
-    urgencyScore,
-  };
-}
+import { checkLimit, trackUsage } from '@/lib/usage';
+import { resolveOrg } from '@/lib/session';
+import { deterministicScore, generateExplanations, clamp, type Scores } from '@/lib/scoring';
 
 // ====== AI Scoring ======
 
@@ -229,6 +33,19 @@ export async function POST(request: NextRequest) {
   try {
     const lead = await request.json();
 
+    const org = await resolveOrg();
+    if (!org) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
+    }
+
+    const limit = await checkLimit(org.id, 'ai_score');
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Monthly AI scoring limit reached. Upgrade your plan for more credits.' },
+        { status: 403 }
+      );
+    }
+
     const companyName = lead.companyName || lead.company_name || '';
     const industry = lead.industry || '';
     const city = lead.city || '';
@@ -243,7 +60,6 @@ export async function POST(request: NextRequest) {
     const website = lead.website || '';
     const leadId = lead.id;
 
-    // Build a business description for the AI
     const userPrompt = `Analyze this business and score it:
 - Company: ${companyName}
 - Industry: ${industry}
@@ -255,33 +71,14 @@ export async function POST(request: NextRequest) {
 - Business Category: ${businessCategory}
 - Website: ${website}`;
 
-    let scores: {
-      leadScore: number;
-      digitalMaturity: number;
-      growthPotential: number;
-      operationalComplexity: number;
-      dataVolumeIndicators: number;
-      marketingSophistication: number;
-      confidenceScore: number;
-      urgencyScore: number;
-    };
+    let scores: Scores;
 
     // Try AI scoring first
     try {
       const aiResponse = await chatCompletion(SCORE_SYSTEM_PROMPT, userPrompt);
-      const parsed = parseAIJson<{
-        leadScore: number;
-        digitalMaturity: number;
-        growthPotential: number;
-        operationalComplexity: number;
-        dataVolumeIndicators: number;
-        marketingSophistication: number;
-        confidenceScore: number;
-        urgencyScore: number;
-      }>(aiResponse);
+      const parsed = parseAIJson<Scores>(aiResponse);
 
       if (parsed && typeof parsed.leadScore === 'number') {
-        // Validate and clamp AI scores
         scores = {
           leadScore: clamp(parsed.leadScore, 0, 100),
           digitalMaturity: clamp(parsed.digitalMaturity ?? 0, 0, 100),
@@ -297,12 +94,13 @@ export async function POST(request: NextRequest) {
       }
     } catch (aiError) {
       console.warn('AI scoring failed, falling back to deterministic algorithm:', aiError);
-      scores = deterministicScore(lead) as typeof scores;
+      scores = deterministicScore(lead);
     }
 
     // Update the lead in the database if we have an ID
     if (leadId) {
       try {
+        const explanations = generateExplanations(lead, scores);
         await db.lead.update({
           where: { id: leadId },
           data: {
@@ -314,12 +112,15 @@ export async function POST(request: NextRequest) {
             marketingSophistication: scores.marketingSophistication,
             confidenceScore: scores.confidenceScore,
             urgencyScore: scores.urgencyScore,
+            aiExplanations: JSON.stringify(explanations),
           },
         });
       } catch (dbError) {
         console.warn('Failed to update lead in database:', dbError);
       }
     }
+
+    await trackUsage(org.id, 'system', 'ai_score', `Scored ${companyName || 'lead'}`);
 
     return NextResponse.json(scores);
   } catch (error) {

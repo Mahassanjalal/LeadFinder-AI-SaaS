@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -14,25 +15,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
 
-    // Check if user exists
-    const existingUser = await db.user.findUnique({ where: { email } });
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingUser = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
       return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user
     const user = await db.user.create({
       data: {
-        name: name || email.split('@')[0],
-        email,
+        name: name || normalizedEmail.split('@')[0],
+        email: normalizedEmail,
         password: hashedPassword,
       },
     });
 
-    // Create organization
-    const slug = (orgName || `${email.split('@')[0]}-team`).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const slug = (orgName || `${normalizedEmail.split('@')[0]}-team`).toLowerCase().replace(/[^a-z0-9-]/g, '-');
     const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
 
     const org = await db.organization.create({
@@ -40,24 +39,18 @@ export async function POST(request: NextRequest) {
         name: orgName || `${user.name}'s Organization`,
         slug: uniqueSlug,
         ownerId: user.id,
-        billingEmail: email,
+        billingEmail: normalizedEmail,
         plan: 'free',
       },
     });
 
-    // Create membership
     await db.membership.create({
-      data: {
-        userId: user.id,
-        orgId: org.id,
-        role: 'owner',
-      },
+      data: { userId: user.id, orgId: org.id, role: 'owner' },
     });
 
-    // Create free subscription
     const now = new Date();
     const periodEnd = new Date(now);
-    periodEnd.setFullYear(periodEnd.getFullYear() + 100); // Free plan doesn't expire
+    periodEnd.setFullYear(periodEnd.getFullYear() + 100);
 
     await db.subscription.create({
       data: {
@@ -73,9 +66,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Generate email verification token
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    await db.verificationToken.create({
+      data: { identifier: normalizedEmail, token: verifyToken, expires: verifyExpires },
+    });
+
+    const verifyLink = `${new URL(request.url).origin}/api/auth/verify-email?token=${verifyToken}`;
+
     return NextResponse.json({
       user: { id: user.id, name: user.name, email: user.email },
       organization: { id: org.id, name: org.name, slug: org.slug, plan: org.plan },
+      // Only include in dev
+      ...(process.env.NODE_ENV !== 'production' ? { verifyLink } : {}),
     }, { status: 201 });
   } catch (error) {
     console.error('Registration error:', error);

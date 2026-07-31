@@ -308,13 +308,26 @@ function generateDeterministicInsights(lead: Record<string, unknown>) {
   };
 }
 
-// ====== AI helpers (using SDK directly) ======
+// ====== AI helpers (Gemini via OpenAI-compatible endpoint) ======
+
+import OpenAI from 'openai';
+
+function getClient(): OpenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  return new OpenAI({
+    apiKey,
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+  });
+}
 
 async function callAIScore(lead: Record<string, unknown>) {
+  const client = getClient();
+  if (!client) {
+    console.warn(`  ⚠ GEMINI_API_KEY not set, using deterministic fallback for ${lead.companyName}`);
+    return deterministicScore(lead);
+  }
   try {
-    const ZAI = (await import('z-ai-web-dev-sdk')).default;
-    const zai = await ZAI.create();
-
     const systemPrompt = `You are an expert lead scoring AI for data analytics services. Analyze the given business and return ONLY valid JSON (no markdown, no code blocks) with these fields:
 {"leadScore":<number 0-100>,"digitalMaturity":<number 0-100>,"growthPotential":<number 0-100>,"operationalComplexity":<number 0-100>,"dataVolumeIndicators":<number 0-100>,"marketingSophistication":<number 0-100>,"confidenceScore":<number 0.0-1.0>,"urgencyScore":<number 0-100>}
 
@@ -339,15 +352,16 @@ Scoring criteria:
 - Business Category: ${lead.businessCategory || 'Unknown'}
 - Website: ${lead.website || 'Unknown'}`;
 
-    const response = await zai.chat.completions.create({
+    const response = await client.chat.completions.create({
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
+      response_format: { type: 'json_object' },
     });
 
     let raw = response.choices?.[0]?.message?.content || '';
-    // Strip markdown code blocks
     const codeBlockMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
     if (codeBlockMatch) raw = codeBlockMatch[1].trim();
     else {
@@ -373,10 +387,12 @@ Scoring criteria:
 }
 
 async function callAIInsights(lead: Record<string, unknown>) {
+  const client = getClient();
+  if (!client) {
+    console.warn(`  ⚠ GEMINI_API_KEY not set, using deterministic fallback for ${lead.companyName}`);
+    return generateDeterministicInsights(lead);
+  }
   try {
-    const ZAI = (await import('z-ai-web-dev-sdk')).default;
-    const zai = await ZAI.create();
-
     const systemPrompt = `You are an expert business analyst specializing in data analytics consulting. Analyze the given business lead and generate deep, actionable insights.
 
 Return ONLY valid JSON (no markdown, no code blocks):
@@ -384,11 +400,13 @@ Return ONLY valid JSON (no markdown, no code blocks):
 
     const userPrompt = `Generate insights for: ${lead.companyName} (${lead.industry}), ${lead.city || ''} ${lead.state || ''}. ${lead.employeeCount || ''} employees, revenue ${lead.estimatedRevenue || 'unknown'}, rating ${(lead.googleRating || 'N/A')}/5, in business ${lead.yearsInBusiness || 'unknown'} years.`;
 
-    const response = await zai.chat.completions.create({
+    const response = await client.chat.completions.create({
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
+      response_format: { type: 'json_object' },
     });
 
     let raw = response.choices?.[0]?.message?.content || '';

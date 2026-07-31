@@ -86,6 +86,7 @@ model Organization {
   leads           Lead[]
   usageRecords    UsageRecord[]
   invites         Invite[]
+  savedSearches   SavedSearch[]
 
   @@index([slug])
 }
@@ -190,6 +191,7 @@ model Lead {
   potentialROI      String?   
   outreachRecommendations String? 
   aiInsights        String?   
+  aiExplanations    String?   // JSON: per-dimension score explanations
 
   // CRM fields
   pipelineStage     String    @default("New")
@@ -252,4 +254,16 @@ model Invite {
 
   @@index([email])
   @@index([token])
+}
+
+model SavedSearch {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  params    String   // JSON: { city, state, country, postalCode, radius, industry, sources }
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
 }

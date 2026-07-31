@@ -1,14 +1,36 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { checkLimit, trackUsage } from '@/lib/usage';
+import { PLANS } from '@/lib/plans';
+import { resolveOrg } from '@/lib/session';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const format = (searchParams.get('format') || 'csv').toLowerCase();
 
-    const org = await db.organization.findFirst();
+    const org = await resolveOrg();
     if (!org) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 });
+    }
+
+    const planConfig = PLANS[org.plan as keyof typeof PLANS];
+
+    // Enforce JSON export gating server-side (Free plan has no JSON export)
+    if (format === 'json' && !planConfig?.features.exportJson) {
+      return NextResponse.json(
+        { error: 'JSON export requires a paid plan. Upgrade to export as JSON.' },
+        { status: 403 }
+      );
+    }
+
+    // Enforce per-plan export limit
+    const limit = await checkLimit(org.id, 'export');
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Monthly export limit reached. Upgrade your plan for more exports.' },
+        { status: 403 }
+      );
     }
 
     const leads = await db.lead.findMany({
@@ -20,8 +42,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const industry = searchParams.get('industry');
+    const filteredLeads = industry ? leads.filter((l) => l.industry === industry) : leads;
+
     if (format === 'json') {
-      return new NextResponse(JSON.stringify(leads, null, 2), {
+      await trackUsage(org.id, 'system', 'export', `Exported ${filteredLeads.length} leads as JSON`);
+      return new NextResponse(JSON.stringify(filteredLeads, null, 2), {
         headers: {
           'Content-Type': 'application/json',
           'Content-Disposition': `attachment; filename="leads-export-${new Date().toISOString().split('T')[0]}.json"`,
@@ -50,7 +76,7 @@ export async function GET(request: NextRequest) {
       return str;
     };
 
-    const rows = leads.map((lead) => [
+    const rows = filteredLeads.map((lead) => [
       lead.companyName, lead.industry, lead.website || '', lead.email || '',
       lead.phone || '', lead.city || '', lead.state || '', lead.country || '',
       lead.postalCode || '', lead.employeeCount || '', lead.estimatedRevenue || '',

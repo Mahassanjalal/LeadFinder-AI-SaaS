@@ -60,22 +60,22 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.orgId = (user as Record<string, unknown>).orgId;
-        token.orgSlug = (user as Record<string, unknown>).orgSlug;
-        token.orgName = (user as Record<string, unknown>).orgName;
-        token.orgPlan = (user as Record<string, unknown>).orgPlan;
-        token.role = (user as Record<string, unknown>).role;
+        token.orgId = user.orgId;
+        token.orgSlug = user.orgSlug;
+        token.orgName = user.orgName;
+        token.orgPlan = user.orgPlan;
+        token.role = user.role;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as Record<string, unknown>).id = token.id;
-        (session.user as Record<string, unknown>).orgId = token.orgId;
-        (session.user as Record<string, unknown>).orgSlug = token.orgSlug;
-        (session.user as Record<string, unknown>).orgName = token.orgName;
-        (session.user as Record<string, unknown>).orgPlan = token.orgPlan;
-        (session.user as Record<string, unknown>).role = token.role;
+        session.user.id = token.id;
+        session.user.orgId = token.orgId;
+        session.user.orgSlug = token.orgSlug;
+        session.user.orgName = token.orgName;
+        session.user.orgPlan = token.orgPlan;
+        session.user.role = token.role;
       }
       return session;
     },

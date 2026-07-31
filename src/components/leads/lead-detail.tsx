@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   Globe, Phone, Mail, MapPin, Linkedin, Building2, Calendar,
   Star, Users, DollarSign, Clock, MessageSquare, Plus, Send,
-  ExternalLink, Tag, FileText, Activity,
+  ExternalLink, Tag, FileText, Activity as ActivityIcon,
 } from 'lucide-react';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
@@ -35,7 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-function ScoreBar({ label, value, color }: { label: string; value: number | null; color: string }) {
+function ScoreBar({ label, value, color, barColor }: { label: string; value: number | null; color: string; barColor: string }) {
   if (value == null) return null;
   return (
     <div className="space-y-1">
@@ -43,7 +43,7 @@ function ScoreBar({ label, value, color }: { label: string; value: number | null
         <span className="text-muted-foreground">{label}</span>
         <span className={cn('font-semibold tabular-nums', color)}>{value}</span>
       </div>
-      <Progress value={value} className={cn('h-1.5', color.replace('text-', '[&>div]:bg-'))} />
+      <Progress value={value} className={cn('h-1.5', barColor)} />
     </div>
   );
 }
@@ -101,15 +101,15 @@ export function LeadDetail({
     if (open && leadId) fetchLead();
   }, [open, leadId, fetchLead]);
 
-  // Also sync with store for optimistic updates
+  // Sync from store only when no fetched lead yet (avoids overwriting fresh data)
   useEffect(() => {
     if (!leadId) return;
     const store = useLeadStore.getState();
     const storeLead = store.filteredLeads.find((l) => l.id === leadId);
-    if (storeLead && !loading) {
-      setLead((prev) => (prev ? { ...prev, ...storeLead } : prev));
+    if (storeLead && lead === null && !loading) {
+      setLead(storeLead);
     }
-  }, [leadId, loading]);
+  }, [leadId, loading, lead]);
 
   const handleAddNote = async () => {
     if (!noteText.trim() || !leadId) return;
@@ -196,10 +196,10 @@ export function LeadDetail({
 
   if (!lead && !loading) return null;
 
-  const painPoints = parseJsonField<string[]>(lead?.painPoints, []);
-  const opportunities = parseJsonField<string[]>(lead?.analyticsOpportunities, []);
-  const services = parseJsonField<string[]>(lead?.recommendedServices, []);
-  const tags = parseJsonField<string[]>(lead?.tags, []);
+  const painPoints = parseJsonField<string[]>(lead?.painPoints ?? null, []);
+  const opportunities = parseJsonField<string[]>(lead?.analyticsOpportunities ?? null, []);
+  const services = parseJsonField<string[]>(lead?.recommendedServices ?? null, []);
+  const tags = parseJsonField<string[]>(lead?.tags ?? null, []);
   const notes = lead?.notes || [];
   const activities = lead?.activities || [];
 
@@ -316,11 +316,28 @@ export function LeadDetail({
                   <LeadScoreBadge score={lead.leadScore} size="lg" showLabel />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <ScoreBar label="Digital Maturity" value={lead.digitalMaturity} color="text-sky-600" />
-                  <ScoreBar label="Growth Potential" value={lead.growthPotential} color="text-emerald-600" />
-                  <ScoreBar label="Operational Complexity" value={lead.operationalComplexity} color="text-violet-600" />
-                  <ScoreBar label="Marketing Sophistication" value={lead.marketingSophistication} color="text-amber-600" />
+                  <ScoreBar label="Digital Maturity" value={lead.digitalMaturity} color="text-sky-600" barColor="[&>div]:bg-sky-600" />
+                  <ScoreBar label="Growth Potential" value={lead.growthPotential} color="text-emerald-600" barColor="[&>div]:bg-emerald-600" />
+                  <ScoreBar label="Operational Complexity" value={lead.operationalComplexity} color="text-violet-600" barColor="[&>div]:bg-violet-600" />
+                  <ScoreBar label="Marketing Sophistication" value={lead.marketingSophistication} color="text-amber-600" barColor="[&>div]:bg-amber-600" />
                 </div>
+                {lead.aiExplanations && (() => {
+                  try {
+                    const exp = JSON.parse(lead.aiExplanations);
+                    return (
+                      <div className="rounded-lg border border-border/40 bg-muted/20 p-3 space-y-1.5">
+                        {exp.overall && (
+                          <p className="text-xs font-medium text-foreground">{exp.overall}</p>
+                        )}
+                        {exp.digitalMaturity && <p className="text-[11px] text-muted-foreground">📊 {exp.digitalMaturity}</p>}
+                        {exp.growthPotential && <p className="text-[11px] text-muted-foreground">📈 {exp.growthPotential}</p>}
+                        {exp.operationalComplexity && <p className="text-[11px] text-muted-foreground">⚙️ {exp.operationalComplexity}</p>}
+                        {exp.marketingSophistication && <p className="text-[11px] text-muted-foreground">📣 {exp.marketingSophistication}</p>}
+                        {exp.urgency && <p className="text-[11px] text-muted-foreground">⏰ {exp.urgency}</p>}
+                      </div>
+                    );
+                  } catch { return null; }
+                })()}
               </div>
 
               <Separator />
@@ -481,7 +498,7 @@ export function LeadDetail({
               {activities.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <Activity className="size-3.5" /> Recent Activity
+                    <ActivityIcon className="size-3.5" /> Recent Activity
                   </h3>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {activities.slice(0, 10).map((act: Activity) => (

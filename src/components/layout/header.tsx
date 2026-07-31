@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { useSession, signOut } from 'next-auth/react';
 import {
@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   Crown,
   CreditCard,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,8 @@ export function Header() {
   const user = session?.user as Record<string, unknown> | undefined;
   const plan = (user?.orgPlan as string) || userPlan;
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = async (format: 'csv' | 'json') => {
     if (format === 'json' && !canUseFeature(plan, 'exportJson')) {
@@ -70,6 +73,30 @@ export function Header() {
       toast.error('Failed to export leads');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/import', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Imported ${data.imported} leads${data.skipped > 0 ? `, ${data.skipped} skipped` : ''}`);
+        // Refresh leads
+        window.location.reload();
+      } else {
+        toast.error(data.error || 'Import failed');
+      }
+    } catch {
+      toast.error('Failed to import CSV');
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
     }
   };
 
@@ -117,6 +144,12 @@ export function Header() {
             <Crown className="h-3 w-3" /> {plan.charAt(0).toUpperCase() + plan.slice(1)}
           </Badge>
         )}
+
+        {/* Import */}
+        <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
+        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Import CSV" disabled={isImporting} onClick={() => fileInputRef.current?.click()}>
+          <Upload className="h-4 w-4" />
+        </Button>
 
         {/* Export */}
         <DropdownMenu>

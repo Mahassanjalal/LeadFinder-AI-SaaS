@@ -6,12 +6,10 @@ import { AppShell } from '@/components/layout/app-shell';
 import { AuthPage } from '@/components/auth/auth-page';
 import { SettingsView } from '@/components/settings/settings-view';
 import { useAppStore } from '@/stores/app-store';
-import { useLeadStore } from '@/stores/lead-store';
 import { LeadDashboard } from '@/components/leads/lead-dashboard';
 import { OutreachAssistant } from '@/components/outreach/outreach-assistant';
 import { AnalyticsDashboard } from '@/components/dashboard/analytics-dashboard';
 import { CrmView } from '@/components/crm/crm-view';
-import { canUseFeature } from '@/lib/auth-helpers';
 import { useSession } from 'next-auth/react';
 import type { AppView, AuthView } from '@/lib/types';
 
@@ -24,8 +22,6 @@ function AppContent() {
   const setAuthView = useAppStore((s) => s.setAuthView);
   const setUserRole = useAppStore((s) => s.setUserRole);
   const setUserPlan = useAppStore((s) => s.setUserPlan);
-  const setLeads = useLeadStore((s) => s.setLeads);
-  const setLoading = useLeadStore((s) => s.setLoading);
   const [showAuth, setShowAuth] = useState(true);
 
   const user = session?.user as Record<string, unknown> | undefined;
@@ -44,25 +40,6 @@ function AppContent() {
       setShowAuth(true);
     }
   }, [status, session, role, plan, setAuthenticated, setUserRole, setUserPlan]);
-
-  // Fetch leads when authenticated
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    async function fetchLeads() {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/leads');
-        const data = await res.json();
-        setLeads(data);
-      } catch (err) {
-        console.error('Failed to fetch leads:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchLeads();
-  }, [isAuthenticated, setLeads, setLoading]);
 
   // Loading state
   if (status === 'loading') {

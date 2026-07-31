@@ -1,10 +1,11 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { PLANS } from '@/lib/plans';
+import { resolveOrg } from '@/lib/session';
 
 export async function GET() {
   try {
-    const org = await db.organization.findFirst();
+    const org = await resolveOrg();
     if (!org) {
       return NextResponse.json({ error: 'No organization found' }, { status: 404 });
     }
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
 
-    const org = await db.organization.findFirst();
+    const org = await resolveOrg();
     if (!org) {
       return NextResponse.json({ error: 'No organization found' }, { status: 404 });
     }

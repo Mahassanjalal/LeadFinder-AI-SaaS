@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, MapPin, Building2, Plus, Loader2, Globe, Linkedin,
-  FolderOpen, ChevronRight, Sparkles,
+  FolderOpen, ChevronRight, Sparkles, Bookmark, Trash2,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -66,6 +66,60 @@ export function LeadDiscovery() {
   const [discovering, setDiscovering] = useState(false);
   const [results, setResults] = useState<DiscoveredBusiness[]>([]);
   const [meta, setMeta] = useState<{ location: string; radius: string; totalFound: number } | null>(null);
+  const [savedSearches, setSavedSearches] = useState<Array<{ id: string; name: string; params: string }>>([]);
+  const [savingSearch, setSavingSearch] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/saved-searches').then(r => r.json()).then(setSavedSearches).catch(() => {});
+  }, []);
+
+  const handleSaveSearch = async () => {
+    const name = window.prompt('Name this search:');
+    if (!name) return;
+    setSavingSearch(true);
+    try {
+      const params = { city, state, country, postalCode, radius: radius[0], industry, companySize, sources: selectedSources };
+      const res = await fetch('/api/saved-searches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, params }),
+      });
+      if (res.ok) {
+        const search = await res.json();
+        setSavedSearches((prev) => [search, ...prev]);
+        toast.success('Search saved');
+      }
+    } catch {
+      toast.error('Failed to save search');
+    } finally {
+      setSavingSearch(false);
+    }
+  };
+
+  const handleLoadSearch = (search: { params: string }) => {
+    try {
+      const p = JSON.parse(search.params);
+      if (p.city) setCity(p.city); else setCity('');
+      if (p.state) setState(p.state); else setState('');
+      if (p.country) setCountry(p.country); else setCountry('US');
+      if (p.postalCode) setPostalCode(p.postalCode); else setPostalCode('');
+      if (p.radius) setRadius([p.radius]);
+      if (p.industry) setIndustry(p.industry); else setIndustry('');
+      if (p.companySize) setCompanySize(p.companySize); else setCompanySize('');
+      if (p.sources) setSelectedSources(p.sources);
+      toast.success('Search loaded');
+    } catch { toast.error('Failed to load search'); }
+  };
+
+  const handleDeleteSearch = async (id: string) => {
+    try {
+      await fetch(`/api/saved-searches/${id}`, { method: 'DELETE' });
+      setSavedSearches((prev) => prev.filter((s) => s.id !== id));
+      toast.success('Search deleted');
+    } catch {
+      toast.error('Failed to delete search');
+    }
+  };
 
   const toggleSource = (sourceId: string) => {
     setSelectedSources((prev) =>
@@ -95,6 +149,7 @@ export function LeadDiscovery() {
       if (postalCode) body.postalCode = postalCode;
       body.radius = String(radius[0]);
       if (industry) body.industry = industry;
+      body.sources = selectedSources.join(',');
 
       const res = await fetch('/api/ai/discover', {
         method: 'POST',
@@ -143,7 +198,7 @@ export function LeadDiscovery() {
   return (
     <div className="space-y-6">
       {/* Discovery Form */}
-      <Card className="bg-white/70 backdrop-blur-sm border-border/60">
+      <Card className=" backdrop-blur-sm border-border/60">
         <CardContent className="p-6">
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="size-5 text-emerald-600" />
@@ -270,6 +325,36 @@ export function LeadDiscovery() {
               </>
             )}
           </Button>
+
+          <div className="mt-3 flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleSaveSearch} disabled={savingSearch || discovering} className="gap-1.5 text-xs">
+              <Bookmark className="size-3.5" />
+              Save Search
+            </Button>
+            {savedSearches.length > 0 && (
+              <Select onValueChange={(v) => {
+                const s = savedSearches.find((ss) => ss.id === v);
+                if (s) handleLoadSearch(s);
+              }}>
+                <SelectTrigger className="h-8 w-auto text-xs">
+                  <SelectValue placeholder="Saved Searches" />
+                </SelectTrigger>
+                <SelectContent>
+                  {savedSearches.map((s) => (
+                    <SelectItem key={s.id} value={s.id} className="flex items-center justify-between gap-2">
+                      <span>{s.name}</span>
+                      <button
+                        className="ml-2 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSearch(s.id); }}
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -318,7 +403,7 @@ export function LeadDiscovery() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
                 >
-                  <Card className="bg-white/70 backdrop-blur-sm border-border/60 hover:border-emerald-200 hover:shadow-md transition-all">
+                  <Card className=" backdrop-blur-sm border-border/60 hover:border-emerald-200 hover:shadow-md transition-all">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">

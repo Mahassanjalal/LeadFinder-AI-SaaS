@@ -39,15 +39,6 @@ import { Separator } from '@/components/ui/separator';
 
 /* ---------- Message type definitions ---------- */
 
-const MESSAGE_TYPES = [
-  { value: 'cold_email', label: 'Cold Email', icon: Mail },
-  { value: 'linkedin', label: 'LinkedIn Connection', icon: Linkedin },
-  { value: 'linkedin', label: 'LinkedIn Message', icon: MessageSquare },
-  { value: 'follow_up', label: 'Follow-up Email', icon: RefreshCw },
-  { value: 'demo_request', label: 'Proposal Intro', icon: FileText },
-  { value: 'demo_request', label: 'Discovery Call Script', icon: Phone },
-] as const;
-
 /* Display‑only key so each selector entry is unique */
 type DisplayKey =
   | 'cold_email'

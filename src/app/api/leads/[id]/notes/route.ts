@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { logActivity } from '@/lib/activity';
 
 export async function GET(
   request: NextRequest,
@@ -31,9 +32,14 @@ export async function POST(
         leadId: id,
       },
     });
+
+    // Auto-log note creation as an activity
+    await logActivity(id, 'note_added', 'Note added',
+      typeof body.content === 'string' ? body.content.slice(0, 120) : null);
+
     return NextResponse.json(note, { status: 201 });
   } catch (error) {
     console.error('Error creating note:', error);
-    return NextResponse.json({ error: 'Failed to create note' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to add note' }, { status: 500 });
   }
 }

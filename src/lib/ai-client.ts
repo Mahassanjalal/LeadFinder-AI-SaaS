@@ -1,26 +1,41 @@
-// AI client with dynamic import to avoid bundling z-ai-web-dev-sdk at compile time
-let _zai: any = null;
+// AI client backed by Google Gemini via the OpenAI-compatible endpoint.
+// Set GEMINI_API_KEY in .env. Falls back to deterministic generators in the
+// calling routes if the key is missing or the request fails.
+import OpenAI from 'openai';
 
-async function getAI() {
-  if (!_zai) {
-    const { default: ZAI } = await import('z-ai-web-dev-sdk');
-    _zai = await ZAI.create();
+let _client: OpenAI | null = null;
+
+function getClient(): OpenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  if (!_client) {
+    _client = new OpenAI({
+      apiKey,
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    });
   }
-  return _zai;
+  return _client;
 }
 
 export async function chatCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+  const client = getClient();
+  if (!client) {
+    console.warn('GEMINI_API_KEY not set — AI features will use deterministic fallback.');
+    return '';
+  }
   try {
-    const zai = await getAI();
-    const response = await zai.chat.completions.create({
+    const response = await client.chat.completions.create({
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
     });
     return response.choices?.[0]?.message?.content || '';
   } catch (error) {
-    console.error('AI chat completion failed:', error);
+    console.error('Gemini chat completion failed:', error);
     return '';
   }
 }

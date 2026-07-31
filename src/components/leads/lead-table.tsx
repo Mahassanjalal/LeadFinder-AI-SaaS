@@ -190,25 +190,26 @@ export function LeadTable({ onSelectLead }: { onSelectLead: (lead: Lead) => void
         accessorKey: 'pipelineStage',
         header: 'Stage',
         cell: ({ row }) => (
-          <Select
-            value={row.original.pipelineStage}
-            onValueChange={(v) => updateLead(row.original.id, { pipelineStage: v })}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <SelectTrigger
-              size="sm"
-              className={cn('h-7 w-[130px] text-xs border', getPipelineStageColor(row.original.pipelineStage))}
+          <div onClick={(e) => e.stopPropagation()}>
+            <Select
+              value={row.original.pipelineStage}
+              onValueChange={(v) => updateLead(row.original.id, { pipelineStage: v })}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PIPELINE_STAGES.map((stage) => (
-                <SelectItem key={stage} value={stage} className="text-xs">
-                  {stage}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                size="sm"
+                className={cn('h-7 w-[130px] text-xs border', getPipelineStageColor(row.original.pipelineStage))}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PIPELINE_STAGES.map((stage) => (
+                  <SelectItem key={stage} value={stage} className="text-xs">
+                    {stage}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         ),
       },
       {

@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { chatCompletion, parseAIJson } from '@/lib/ai-client';
+import { resolveOrg } from '@/lib/session';
 
 // ====== Deterministic fallback ======
 

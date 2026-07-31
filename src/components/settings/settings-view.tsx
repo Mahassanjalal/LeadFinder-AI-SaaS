@@ -53,23 +53,33 @@ export function SettingsView() {
   const handleSwitchPlan = async (newPlan: string) => {
     setIsSwitching(true);
     try {
-      const res = await fetch('/api/billing', {
+      // Free plan is still simulated (no checkout). Paid plans go through Stripe.
+      if (newPlan === 'free') {
+        const res = await fetch('/api/billing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: newPlan }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast.success(`Switched to ${PLANS[newPlan as PlanKey]?.name} plan!`);
+          await refreshData();
+        } else {
+          toast.error(data.error || 'Failed to switch plan');
+        }
+        return;
+      }
+
+      const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan: newPlan }),
       });
       const data = await res.json();
-      if (res.ok) {
-        toast.success(`Switched to ${PLANS[newPlan as PlanKey]?.name} plan!`);
-        // Refresh data
-        const [orgRes, usageRes] = await Promise.all([
-          fetch('/api/organizations'),
-          fetch('/api/billing'),
-        ]);
-        if (orgRes.ok) setOrgData(await orgRes.json());
-        if (usageRes.ok) setUsageData(await usageRes.json());
+      if (res.ok && data.url) {
+        window.location.href = data.url;
       } else {
-        toast.error(data.error || 'Failed to switch plan');
+        toast.error(data.error || 'Failed to start checkout');
       }
     } catch {
       toast.error('Failed to switch plan');
@@ -78,8 +88,91 @@ export function SettingsView() {
     }
   };
 
+  const refreshData = async () => {
+    const [orgRes, usageRes] = await Promise.all([
+      fetch('/api/organizations'),
+      fetch('/api/billing'),
+    ]);
+    if (orgRes.ok) setOrgData(await orgRes.json());
+    if (usageRes.ok) setUsageData(await usageRes.json());
+  };
+
   const handleSignOut = async () => {
     await signOut({ callbackUrl: '/' });
+  };
+
+  const handleSaveProfile = async () => {
+    const nameInput = document.getElementById('profile-name') as HTMLInputElement | null;
+    const newName = nameInput?.value?.trim();
+    if (!newName) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+    try {
+      const res = await fetch('/api/organizations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (res.ok) {
+        toast.success('Organization name updated');
+        setOrgData((prev) => (prev ? { ...prev, name: newName } : prev));
+      } else {
+        toast.error('Failed to update organization');
+      }
+    } catch {
+      toast.error('Failed to update organization');
+    }
+  };
+
+  const handleChangeRole = async (memberId: string, role: string) => {
+    try {
+      const res = await fetch(`/api/organizations/members/${memberId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      if (res.ok) {
+        toast.success('Member role updated');
+        setOrgData((prev) =>
+          prev
+            ? {
+                ...prev,
+                members: prev.members.map((m) =>
+                  m.id === memberId ? { ...m, role } : m
+                ),
+              }
+            : prev
+        );
+      } else {
+        toast.error('Failed to update role');
+      }
+    } catch {
+      toast.error('Failed to update role');
+    }
+  };
+
+  const handleInvite = async () => {
+    const email = window.prompt('Invite by email');
+    if (!email) return;
+    try {
+      const res = await fetch('/api/teams/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, role: 'analyst' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(data.inviteLink).catch(() => {});
+        }
+        toast.success(`Invite created for ${data.email}. Link copied to clipboard.`);
+      } else {
+        toast.error(data.error || 'Failed to create invite');
+      }
+    } catch {
+      toast.error('Failed to create invite');
+    }
   };
 
   const currentPlan = (user?.orgPlan as string) || 'free';
@@ -137,14 +230,14 @@ export function SettingsView() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Full Name</Label>
-                  <Input defaultValue={String(user?.name || '')} />
+                  <Input id="profile-name" defaultValue={String(user?.name || '')} />
                 </div>
                 <div className="space-y-2">
                   <Label>Email Address</Label>
                   <Input defaultValue={String(user?.email || '')} disabled />
                 </div>
               </div>
-              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white">Save Changes</Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white" onClick={handleSaveProfile}>Save Changes</Button>
             </CardContent>
           </Card>
 
@@ -205,7 +298,7 @@ export function SettingsView() {
                     <CardDescription>
                       {usageData.subscription.plan === 'free'
                         ? 'You are on the free plan. Upgrade for more credits and features.'
-                        : `Billed at $${usageData.subscription.creditsPerMonth > 0 ? Math.round(usageData.subscription.creditsPerMonth / 100) * (currentPlanConfig?.price || 0) : 0}/month`}
+                        : `Billed at $${currentPlanConfig?.price || 0}/month`}
                     </CardDescription>
                   </div>
                   {usageData.subscription.plan !== 'free' && (
@@ -384,7 +477,7 @@ export function SettingsView() {
                       <CardDescription>Manage who has access to your workspace</CardDescription>
                     </div>
                     {orgData.members.length < (usageData?.subscription.maxMembers || 1) && (
-                      <Button className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm">
+                      <Button className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm" onClick={handleInvite}>
                         <Users className="mr-1.5 h-4 w-4" /> Invite Member
                       </Button>
                     )}
@@ -414,7 +507,11 @@ export function SettingsView() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <Select defaultValue={member.role} disabled={member.role === 'owner' || !canManageTeam}>
+                          <Select
+                            value={member.role}
+                            disabled={member.role === 'owner' || !canManageTeam}
+                            onValueChange={(role) => handleChangeRole(member.id, role)}
+                          >
                             <SelectTrigger className="w-[130px] h-8 text-xs">
                               <SelectValue />
                             </SelectTrigger>

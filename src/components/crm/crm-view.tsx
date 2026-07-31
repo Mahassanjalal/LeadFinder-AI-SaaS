@@ -15,7 +15,7 @@ import {
   AlertCircle,
   StickyNote,
   LayoutGrid,
-  Activity,
+  Activity as ActivityIcon,
   User,
   Building2,
   Globe,
@@ -83,7 +83,7 @@ function getActivityIcon(type: string) {
     case 'proposal_sent':
       return FileSpreadsheet;
     default:
-      return Activity;
+      return ActivityIcon;
   }
 }
 
@@ -428,7 +428,7 @@ export function CrmView() {
                       Details
                     </TabsTrigger>
                     <TabsTrigger value="activities" className="gap-1.5 text-xs">
-                      <Activity className="h-3.5 w-3.5" />
+                      <ActivityIcon className="h-3.5 w-3.5" />
                       Activities
                     </TabsTrigger>
                     <TabsTrigger value="notes" className="gap-1.5 text-xs">
@@ -733,7 +733,7 @@ export function CrmView() {
                             </div>
                           ) : activities.length === 0 ? (
                             <EmptyState
-                              icon={Activity}
+                              icon={ActivityIcon}
                               title="No activities yet"
                               description="Start tracking interactions with this lead by adding an activity."
                               className="py-8"

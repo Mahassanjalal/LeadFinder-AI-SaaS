@@ -35,7 +35,8 @@ export interface Lead {
   painPoints: string | null; // JSON string array
   analyticsOpportunities: string | null; // JSON string array
   recommendedServices: string | null; // JSON string array
-  aiInsights: string | null; // JSON object
+  aiInsights: string | null;
+  aiExplanations: string | null; // JSON object with per-dimension explanations // JSON object
   potentialROI: string | null;
   outreachRecommendations: string | null; // JSON string array
   pipelineStage: string;

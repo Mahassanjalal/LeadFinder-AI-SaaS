@@ -86,7 +86,7 @@ function KpiCard({
   suffix?: string;
 }) {
   return (
-    <Card className="bg-white/70 backdrop-blur-sm">
+    <Card className=" backdrop-blur-sm">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -270,7 +270,7 @@ export function LeadAnalytics() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Score Distribution */}
-        <Card className="bg-white/70 backdrop-blur-sm">
+        <Card className=" backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Score Distribution</CardTitle>
           </CardHeader>
@@ -298,7 +298,7 @@ export function LeadAnalytics() {
         </Card>
 
         {/* Industry Breakdown Pie */}
-        <Card className="bg-white/70 backdrop-blur-sm">
+        <Card className=" backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Industry Breakdown</CardTitle>
           </CardHeader>
@@ -351,7 +351,7 @@ export function LeadAnalytics() {
       {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Pipeline Funnel */}
-        <Card className="bg-white/70 backdrop-blur-sm">
+        <Card className=" backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Pipeline Funnel</CardTitle>
           </CardHeader>
@@ -361,7 +361,7 @@ export function LeadAnalytics() {
         </Card>
 
         {/* Top Opportunities */}
-        <Card className="bg-white/70 backdrop-blur-sm">
+        <Card className=" backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Top Industries by Score</CardTitle>
           </CardHeader>

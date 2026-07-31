@@ -78,8 +78,10 @@ interface SizeItem {
 }
 
 interface Recommendation {
-  name: string;
-  score: number;
+  name?: string;
+  companyName?: string;
+  score?: number;
+  leadScore?: number;
   reason: string;
 }
 
@@ -509,13 +511,13 @@ export function AnalyticsDashboard() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-foreground truncate">
-                            {item.name}
+                            {item.companyName || item.name || 'Unknown'}
                           </span>
                           <Badge
                             variant="outline"
                             className="text-xs shrink-0 ml-2"
                           >
-                            {item.score}
+                            {item.leadScore ?? item.score ?? '—'}
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-2">

@@ -39,7 +39,7 @@ function LeadCard({ lead, index, onSelect }: { lead: Lead; index: number; onSele
         className={cn(
           'group cursor-pointer transition-all duration-300',
           'hover:shadow-lg hover:shadow-emerald-500/5 hover:-translate-y-0.5',
-          'bg-white/70 backdrop-blur-sm border-border/60',
+          ' backdrop-blur-sm border-border/60',
           'hover:border-emerald-200'
         )}
         onClick={() => onSelect(lead)}

@@ -24,6 +24,25 @@ interface AuthPageProps {
   onAuthSuccess: () => void;
 }
 
+// Static class maps — Tailwind v4 cannot detect dynamically interpolated class names.
+const FEATURE_CARD_STYLES: Record<string, string> = {
+  emerald: 'bg-emerald-500/10',
+  amber: 'bg-amber-500/10',
+  sky: 'bg-sky-500/10',
+  violet: 'bg-violet-500/10',
+  rose: 'bg-rose-500/10',
+  teal: 'bg-teal-500/10',
+};
+
+const FEATURE_ICON_STYLES: Record<string, string> = {
+  emerald: 'text-emerald-400',
+  amber: 'text-amber-400',
+  sky: 'text-sky-400',
+  violet: 'text-violet-400',
+  rose: 'text-rose-400',
+  teal: 'text-teal-400',
+};
+
 // ============================================
 // Landing Page
 // ============================================
@@ -93,7 +112,8 @@ function LandingPage({ onAuthViewChange }: { onAuthViewChange: (v: AuthView) => 
               { icon: BarChart3, title: 'Analytics Dashboard', desc: 'Track pipeline performance, score distributions, industry breakdowns, and conversion rates.', color: 'violet' },
               { icon: Target, title: 'CRM Built-In', desc: 'Manage pipeline stages, track activities, add notes, and never lose a follow-up.', color: 'rose' },
               { icon: Globe, title: 'Multi-Source Data', desc: 'Pull from Google Maps, LinkedIn, business directories and more — all in one search.', color: 'teal' },
-            ].map((feature, i) => (
+            ].map((feature, i) => {
+              return (
               <motion.div
                 key={feature.title}
                 initial={{ opacity: 0, y: 20 }}
@@ -102,8 +122,8 @@ function LandingPage({ onAuthViewChange }: { onAuthViewChange: (v: AuthView) => 
               >
                 <Card className="glass-card h-full hover:glow-emerald transition-shadow duration-300 border-border/50">
                   <CardHeader>
-                    <div className={`h-10 w-10 rounded-lg bg-${feature.color}-500/10 flex items-center justify-center mb-2`}>
-                      <feature.icon className={`h-5 w-5 text-${feature.color}-400`} />
+                    <div className={`h-10 w-10 rounded-lg ${FEATURE_CARD_STYLES[feature.color] || FEATURE_CARD_STYLES.emerald} flex items-center justify-center mb-2`}>
+                      <feature.icon className={`h-5 w-5 ${FEATURE_ICON_STYLES[feature.color] || FEATURE_ICON_STYLES.emerald}`} />
                     </div>
                     <CardTitle className="text-lg">{feature.title}</CardTitle>
                   </CardHeader>
@@ -112,7 +132,8 @@ function LandingPage({ onAuthViewChange }: { onAuthViewChange: (v: AuthView) => 
                   </CardContent>
                 </Card>
               </motion.div>
-            ))}
+              );
+          })}
           </div>
         </div>
       </section>
@@ -200,6 +221,35 @@ function LoginForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: 
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      toast.error('Enter your email first, then click "Forgot password?"');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (data.resetLink) {
+        toast.success('Reset link generated! (Dev mode)', {
+          description: data.resetLink,
+          duration: 15000,
+        });
+        window.open(data.resetLink, '_blank');
+      } else {
+        toast.success('If that email exists, a reset link has been sent.');
+      }
+    } catch {
+      toast.error('Failed to send reset link. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleDemoLogin = async () => {
     setIsLoading(true);
     try {
@@ -246,7 +296,7 @@ function LoginForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
-                  <button type="button" className="text-xs text-emerald-400 hover:text-emerald-300">Forgot password?</button>
+                  <button type="button" onClick={handleForgotPassword} disabled={isLoading} className="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">Forgot password?</button>
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

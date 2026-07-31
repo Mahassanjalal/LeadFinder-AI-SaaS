@@ -1,9 +1,10 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { resolveOrg } from '@/lib/session';
 
 export async function GET() {
   try {
-    const org = await db.organization.findFirst();
+    const org = await resolveOrg();
     if (!org) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 });
     }

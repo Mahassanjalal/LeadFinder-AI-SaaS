@@ -1,12 +1,19 @@
 import { db } from '@/lib/db';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { resolveOrg } from '@/lib/session';
 
 // GET current user's organization + subscription info
 export async function GET() {
   try {
     // In a real app, get user ID from session
     // For demo, return the first org
-    const org = await db.organization.findFirst({
+    const org = await resolveOrg();
+    if (!org) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
+    }
+
+    const fullOrg = await db.organization.findUnique({
+      where: { id: org.id },
       include: {
         subscriptions: {
           orderBy: { createdAt: 'desc' },
@@ -25,20 +32,20 @@ export async function GET() {
       },
     });
 
-    if (!org) {
+    if (!fullOrg) {
       return NextResponse.json({ error: 'No organization found' }, { status: 404 });
     }
 
-    const subscription = org.subscriptions[0];
+    const subscription = fullOrg.subscriptions[0];
     const currentPeriodEnd = subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd) : null;
 
     return NextResponse.json({
-      id: org.id,
-      name: org.name,
-      slug: org.slug,
-      plan: org.plan,
-      logo: org.logo,
-      billingEmail: org.billingEmail,
+      id: fullOrg.id,
+      name: fullOrg.name,
+      slug: fullOrg.slug,
+      plan: fullOrg.plan,
+      logo: fullOrg.logo,
+      billingEmail: fullOrg.billingEmail,
       subscription: subscription ? {
         plan: subscription.plan,
         status: subscription.status,
@@ -51,20 +58,50 @@ export async function GET() {
         daysRemaining: currentPeriodEnd ? Math.max(0, Math.ceil((currentPeriodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null,
         pricePerMonth: subscription.pricePerMonth,
       } : null,
-      members: org.memberships.map((m) => ({
+      members: fullOrg.memberships.map((m) => ({
         id: m.id,
         role: m.role,
         joinedAt: m.joinedAt,
         user: m.user,
       })),
       stats: {
-        leadCount: org._count.leads,
-        pendingInvites: org._count.invites,
-        memberCount: org.memberships.length,
+        leadCount: fullOrg._count.leads,
+        pendingInvites: fullOrg._count.invites,
+        memberCount: fullOrg.memberships.length,
       },
     });
   } catch (error) {
     console.error('Error fetching organization:', error);
     return NextResponse.json({ error: 'Failed to fetch organization' }, { status: 500 });
+  }
+}
+
+// PATCH: update organization name
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const org = await resolveOrg();
+    if (!org) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
+    }
+
+    const data: Record<string, unknown> = {};
+    if (typeof body.name === 'string' && body.name.trim()) {
+      data.name = body.name.trim();
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    }
+
+    const updated = await db.organization.update({
+      where: { id: org.id },
+      data,
+    });
+
+    return NextResponse.json({ id: updated.id, name: updated.name });
+  } catch (error) {
+    console.error('Error updating organization:', error);
+    return NextResponse.json({ error: 'Failed to update organization' }, { status: 500 });
   }
 }

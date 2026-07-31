@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chatCompletion, parseAIJson } from '@/lib/ai-client';
+import { db } from '@/lib/db';
+import { checkLimit, trackUsage } from '@/lib/usage';
+import { resolveOrg } from '@/lib/session';
+import { logActivity } from '@/lib/activity';
 
 type MessageType = 'cold_email' | 'linkedin_connection' | 'linkedin_message' | 'follow_up' | 'proposal_intro' | 'call_script' | 'demo_request';
 
 interface OutreachRequest {
+  leadId?: string;
   companyName: string;
   industry: string;
   contactName?: string;
@@ -259,6 +264,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const org = await db.organization.findFirst();
+    if (!org) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
+    }
+
+    const limit = await checkLimit(org.id, 'ai_outreach');
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Monthly AI outreach limit reached. Upgrade your plan for more credits.' },
+        { status: 403 }
+      );
+    }
+
     const messageType = body.messageType;
 
     // Try AI generation first
@@ -285,6 +303,14 @@ export async function POST(request: NextRequest) {
     let generator = fallbackGenerators[messageType] || fallbackGenerators[normalizedType] || fallbackGenerators['cold_email'];
 
     const result = generator(body);
+    await trackUsage(org.id, 'system', 'ai_outreach', `Generated ${messageType} for ${body.companyName}`);
+
+    // Auto-log outreach generation as an activity on the lead
+    if (body.leadId) {
+      await logActivity(body.leadId, 'outreach_generated', 'Outreach message generated',
+        `${messageType.replace(/_/g, ' ')} for ${body.companyName}`);
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error generating outreach message:', error);
