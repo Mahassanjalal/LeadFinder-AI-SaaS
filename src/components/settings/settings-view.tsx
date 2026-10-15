@@ -24,13 +24,29 @@ import type { Organization, UsageData } from '@/lib/types';
 import { toast } from 'sonner';
 import { canUseFeature } from '@/lib/auth-helpers';
 
-export function SettingsView() {
+export function SettingsView({ initialTab }: { initialTab?: string } = {}) {
   const { data: session } = useSession();
   const user = session?.user as Record<string, unknown> | undefined;
   const [orgData, setOrgData] = useState<Organization | null>(null);
   const [usageData, setUsageData] = useState<UsageData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSwitching, setIsSwitching] = useState(false);
+  const [tab, setTab] = useState<string>(initialTab === 'billing' || initialTab === 'team' || initialTab === 'profile' ? initialTab : 'profile');
+
+  // Deep links: Stripe returns to /?view=settings&tab=billing&status=success|canceled
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status');
+    if (status === 'success') toast.success('Subscription updated — welcome to your new plan!');
+    if (status === 'canceled') toast.info('Checkout canceled — your plan was not changed.');
+    if (params.toString()) {
+      params.delete('view');
+      params.delete('tab');
+      params.delete('status');
+      const query = params.toString();
+      window.history.replaceState({}, '', query ? `/?${query}` : '/');
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -77,7 +93,7 @@ export function SettingsView() {
       });
       const data = await res.json();
       if (res.ok && data.url) {
-        window.location.href = data.url;
+        window.location.assign(data.url);
       } else {
         toast.error(data.error || 'Failed to start checkout');
       }
@@ -177,7 +193,8 @@ export function SettingsView() {
 
   const currentPlan = (user?.orgPlan as string) || 'free';
   const role = (user?.role as string) || 'analyst';
-  const canManageBilling = role === 'owner' || role === 'admin';
+  // README permission matrix: Billing & plans → Owner only; team → Owner/Admin.
+  const canManageBilling = role === 'owner';
   const canManageTeam = role === 'owner' || role === 'admin';
   const currentPlanConfig = PLANS[currentPlan as PlanKey];
 
@@ -199,7 +216,7 @@ export function SettingsView() {
         <p className="text-muted-foreground mt-1">Manage your account, team, and subscription</p>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-6">
         <TabsList className="bg-muted/50 p-1">
           <TabsTrigger value="profile" className="gap-1.5"><User className="h-4 w-4" /> Profile</TabsTrigger>
           <TabsTrigger value="billing" className="gap-1.5"><CreditCard className="h-4 w-4" /> Billing</TabsTrigger>

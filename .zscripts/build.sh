@@ -136,17 +136,25 @@ if [ -d "public" ]; then
 fi
 
 # 将测试环境数据库复制到构建产物中，生产环境直接使用这份数据库
+# 支持两种数据库位置：./db/custom.db（打包布局）与 ./prisma/data/jobs.db（仓库内种子库）
+DB_SRC=""
 if [ -f "./db/custom.db" ]; then
-    echo "🗄️  复制测试环境数据库到构建产物..."
+    DB_SRC="./db/custom.db"
+elif [ -f "./prisma/data/jobs.db" ]; then
+    DB_SRC="./prisma/data/jobs.db"
+fi
+
+if [ -n "$DB_SRC" ]; then
+    echo "🗄️  复制测试环境数据库到构建产物... ($DB_SRC)"
     mkdir -p "$BUILD_DIR/db"
-    cp -r ./db/. "$BUILD_DIR/db/"
+    cp "$DB_SRC" "$BUILD_DIR/db/custom.db"
 
     echo "🗄️  同步构建产物中的数据库结构..."
     DATABASE_URL="file:$BUILD_DIR/db/custom.db" bun run db:push
     echo "✅ 构建产物数据库已准备完成"
     ls -lah "$BUILD_DIR/db"
 else
-    echo "❌ 未找到测试环境数据库文件 ./db/custom.db，无法继续构建生产包"
+    echo "❌ 未找到数据库文件（./db/custom.db 或 ./prisma/data/jobs.db），无法继续构建生产包"
     exit 1
 fi
 

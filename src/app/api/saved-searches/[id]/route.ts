@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 
 // DELETE /api/saved-searches/[id]
 export async function DELETE(
@@ -9,10 +9,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    const guard = await requirePermission('leads:write');
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     // Only delete if it belongs to the current org
     const search = await db.savedSearch.findFirst({ where: { id, orgId: org.id } });

@@ -65,6 +65,29 @@ export const authOptions: NextAuthOptions = {
         token.orgName = user.orgName;
         token.orgPlan = user.orgPlan;
         token.role = user.role;
+        return token;
+      }
+
+      // Refresh org/role/plan on every session read. These values were frozen at
+      // sign-in, so role changes, plan upgrades and Stripe webhooks otherwise
+      // had no effect until the user logged out and back in.
+      if (token.id) {
+        try {
+          const membership = await db.membership.findFirst({
+            where: { userId: token.id as string },
+            include: { organization: true },
+            orderBy: { joinedAt: 'asc' },
+          });
+          if (membership) {
+            token.orgId = membership.orgId;
+            token.orgSlug = membership.organization.slug;
+            token.orgName = membership.organization.name;
+            token.orgPlan = membership.organization.plan;
+            token.role = membership.role;
+          }
+        } catch (error) {
+          console.error('Failed to refresh session claims:', error);
+        }
       }
       return token;
     },

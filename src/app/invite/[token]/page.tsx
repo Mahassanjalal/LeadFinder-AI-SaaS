@@ -46,17 +46,8 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
     })();
   }, [token]);
 
-  // If already logged in as the invited email, accept immediately
-  useEffect(() => {
-    if (status === 'authenticated' && session?.user && invite && (session.user as any).email === invite.email) {
-      acceptInvite();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, session, invite]);
-
   const acceptInvite = async () => {
     if (!token) return;
-    setAccepting(true);
     try {
       const res = await fetch(`/api/invites/${token}`, {
         method: 'POST',
@@ -89,6 +80,14 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
       setAccepting(false);
     }
   };
+
+  // If already logged in as the invited email, accept immediately.
+  // Declared after `acceptInvite` so the effect never reads it before init.
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user && invite && (session.user as any).email === invite.email) {
+      acceptInvite();
+    }
+  }, [status, session, invite]);
 
   return (
     <div className="min-h-screen bg-background animated-gradient-bg flex items-center justify-center px-4">
@@ -158,7 +157,10 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
                     </div>
                     <Button
                       className="w-full bg-emerald-600 hover:bg-emerald-500 text-white"
-                      onClick={acceptInvite}
+                      onClick={() => {
+                        setAccepting(true);
+                        acceptInvite();
+                      }}
                       disabled={accepting || password.length < 8}
                     >
                       {accepting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}

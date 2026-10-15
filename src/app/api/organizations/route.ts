@@ -1,16 +1,14 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveOrg } from '@/lib/session';
+import { requireAuth, requirePermission } from '@/lib/api-auth';
 
 // GET current user's organization + subscription info
 export async function GET() {
   try {
-    // In a real app, get user ID from session
-    // For demo, return the first org
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
+    const guard = await requireAuth();
+    if (!guard.ok) return guard.response;
+
+    const org = guard.auth.org;
 
     const fullOrg = await db.organization.findUnique({
       where: { id: org.id },
@@ -80,10 +78,9 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
+    const guard = await requirePermission('settings');
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     const data: Record<string, unknown> = {};
     if (typeof body.name === 'string' && body.name.trim()) {

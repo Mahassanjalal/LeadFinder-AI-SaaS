@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
+import { pickLeadFields } from '@/lib/lead-input';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,11 +11,9 @@ export async function GET(request: NextRequest) {
     const minScore = searchParams.get('minScore');
     const search = searchParams.get('search');
 
-    // Get first org (in production, from session)
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json([]);
-    }
+    const guard = await requirePermission('leads:read');
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     const where: Record<string, unknown> = { orgId: org.id };
 
@@ -51,13 +50,30 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
+    const guard = await requirePermission('leads:write');
+    if (!guard.ok) return guard.response;
+    const { org, session } = guard.auth;
+
+    const fields = pickLeadFields(body);
+    const companyName = typeof fields.companyName === 'string' ? fields.companyName.trim() : '';
+    const industry = typeof fields.industry === 'string' ? fields.industry.trim() : '';
+    // `companyName` and `industry` are required by the schema — validate them
+    // instead of letting Prisma throw a 500 for a bad request.
+    if (!companyName) {
+      return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
+    }
+    if (!industry) {
+      return NextResponse.json({ error: 'Industry is required' }, { status: 400 });
     }
 
     const lead = await db.lead.create({
-      data: { ...body, orgId: org.id },
+      data: {
+        ...fields,
+        companyName,
+        industry,
+        orgId: org.id,
+        createdBy: session.userId,
+      },
     });
     return NextResponse.json(lead, { status: 201 });
   } catch (error) {

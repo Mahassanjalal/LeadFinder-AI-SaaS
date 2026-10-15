@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { chatCompletion, parseAIJson } from '@/lib/ai-client';
 import { checkLimit, trackUsage } from '@/lib/usage';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 import { deterministicScore, generateExplanations, clamp, type Scores } from '@/lib/scoring';
 
 // ====== AI Scoring ======
@@ -33,10 +33,9 @@ export async function POST(request: NextRequest) {
   try {
     const lead = await request.json();
 
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
-    }
+    const guard = await requirePermission('ai:score');
+    if (!guard.ok) return guard.response;
+    const { org, session } = guard.auth;
 
     const limit = await checkLimit(org.id, 'ai_score');
     if (!limit.allowed) {
@@ -120,7 +119,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await trackUsage(org.id, 'system', 'ai_score', `Scored ${companyName || 'lead'}`);
+    await trackUsage(org.id, session.userId, 'ai_score', `Scored ${companyName || 'lead'}`);
 
     return NextResponse.json(scores);
   } catch (error) {

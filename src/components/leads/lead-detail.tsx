@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Globe, Phone, Mail, MapPin, Linkedin, Building2, Calendar,
@@ -66,6 +66,14 @@ function InfoRow({ icon: Icon, value, href }: { icon: React.ElementType; value: 
   return content;
 }
 
+// Module-level fetcher: the effect below only writes state from promise
+// callbacks, so no React state is mutated synchronously during the effect.
+async function fetchLeadById(id: string) {
+  const res = await fetch(`/api/leads/${id}`);
+  if (!res.ok) throw new Error(`Failed to load lead (${res.status})`);
+  return res.json();
+}
+
 export function LeadDetail({
   leadId,
   open,
@@ -76,40 +84,38 @@ export function LeadDetail({
   onOpenChange: (open: boolean) => void;
 }) {
   const [lead, setLead] = useState<Lead | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadedForLeadId, setLoadedForLeadId] = useState<string | null>(null);
+  const loading = !!leadId && loadedForLeadId !== leadId;
   const [noteText, setNoteText] = useState('');
   const [outreachType, setOutreachType] = useState<string>('cold_email');
   const [outreachMsg, setOutreachMsg] = useState<OutreachMessage | null>(null);
   const [generating, setGenerating] = useState(false);
   const { updateLead } = useLeadStore();
 
-  const fetchLead = useCallback(async () => {
-    if (!leadId) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/leads/${leadId}`);
-      const json = await res.json();
-      setLead(json);
-    } catch {
-      toast.error('Failed to load lead details');
-    } finally {
-      setLoading(false);
-    }
-  }, [leadId]);
-
   useEffect(() => {
-    if (open && leadId) fetchLead();
-  }, [open, leadId, fetchLead]);
+    if (!open || !leadId) return;
+    const id = leadId;
+    let cancelled = false;
 
-  // Sync from store only when no fetched lead yet (avoids overwriting fresh data)
-  useEffect(() => {
-    if (!leadId) return;
-    const store = useLeadStore.getState();
-    const storeLead = store.filteredLeads.find((l) => l.id === leadId);
-    if (storeLead && lead === null && !loading) {
-      setLead(storeLead);
-    }
-  }, [leadId, loading, lead]);
+    fetchLeadById(id)
+      .then((json) => {
+        if (!cancelled) setLead(json);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Fall back to the store copy so an offline/failed request still renders.
+        const storeLead = useLeadStore.getState().filteredLeads.find((l) => l.id === id);
+        if (storeLead) setLead(storeLead);
+        else toast.error('Failed to load lead details');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedForLeadId(id);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, leadId]);
 
   const handleAddNote = async () => {
     if (!noteText.trim() || !leadId) return;

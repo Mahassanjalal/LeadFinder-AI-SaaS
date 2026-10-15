@@ -1,14 +1,13 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 
 // GET /api/saved-searches — list saved searches for the current org
 export async function GET() {
   try {
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    const guard = await requirePermission('leads:read');
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     const searches = await db.savedSearch.findMany({
       where: { orgId: org.id },
@@ -25,10 +24,9 @@ export async function GET() {
 // POST /api/saved-searches — create a saved search
 export async function POST(request: NextRequest) {
   try {
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    const guard = await requirePermission('leads:write');
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     const body = await request.json();
     const { name, params } = body;

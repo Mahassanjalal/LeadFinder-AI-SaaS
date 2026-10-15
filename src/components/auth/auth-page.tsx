@@ -16,12 +16,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PLANS } from '@/lib/plans';
 import type { AuthView } from '@/lib/types';
 import { toast } from 'sonner';
-import { useSession, signIn } from 'next-auth/react';
+import { signIn } from 'next-auth/react';
 
 interface AuthPageProps {
   authView: AuthView;
   setAuthView: (view: AuthView) => void;
-  onAuthSuccess: () => void;
+  /** Optional: the parent already derives auth state from the NextAuth session. */
+  onAuthSuccess?: () => void;
 }
 
 // Static class maps — Tailwind v4 cannot detect dynamically interpolated class names.
@@ -185,18 +186,11 @@ function LandingPage({ onAuthViewChange }: { onAuthViewChange: (v: AuthView) => 
 // ============================================
 // Login Form
 // ============================================
-function LoginForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: AuthView) => void; onAuthSuccess: () => void }) {
+function LoginForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: AuthView) => void; onAuthSuccess?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { data: session } = useSession();
-
-  // If already logged in, redirect
-  if (session?.user) {
-    onAuthSuccess();
-    return null;
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,7 +206,7 @@ function LoginForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: 
         toast.error('Invalid email or password');
       } else {
         toast.success('Welcome back!');
-        onAuthSuccess();
+        onAuthSuccess?.();
       }
     } catch {
       toast.error('Login failed. Please try again.');
@@ -262,7 +256,7 @@ function LoginForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: 
         toast.error('Demo account not available. Please register first.');
       } else {
         toast.success('Welcome to the demo!');
-        onAuthSuccess();
+        onAuthSuccess?.();
       }
     } catch {
       toast.error('Demo login failed.');
@@ -338,7 +332,7 @@ function LoginForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: 
 // ============================================
 // Register Form
 // ============================================
-function RegisterForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: AuthView) => void; onAuthSuccess: () => void }) {
+function RegisterForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (v: AuthView) => void; onAuthSuccess?: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -379,7 +373,7 @@ function RegisterForm({ onAuthViewChange, onAuthSuccess }: { onAuthViewChange: (
         onAuthViewChange('login');
       } else {
         toast.success('Account created! Welcome to LeadFinder AI!');
-        onAuthSuccess();
+        onAuthSuccess?.();
       }
     } catch {
       toast.error('Registration failed. Please try again.');

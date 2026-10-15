@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkLimit, trackUsage } from '@/lib/usage';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 import { deterministicScore, generateDeterministicInsights, generateExplanations } from '@/lib/scoring';
 
 interface DiscoverRequest {
@@ -349,10 +349,9 @@ export async function POST(request: NextRequest) {
   try {
     const body: DiscoverRequest = await request.json();
 
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
-    }
+    const guard = await requirePermission('ai:discover');
+    if (!guard.ok) return guard.response;
+    const { org, session } = guard.auth;
 
     const limit = await checkLimit(org.id, 'discovery');
     if (!limit.allowed) {
@@ -402,7 +401,7 @@ export async function POST(request: NextRequest) {
       biz.aiExplanations = JSON.stringify(generateExplanations(biz, scores));
     }
 
-    await trackUsage(org.id, 'system', 'discovery', `Discovered ${businesses.length} businesses${usedReal ? ' (live)' : ' (sample)'}`);
+    await trackUsage(org.id, session.userId, 'discovery', `Discovered ${businesses.length} businesses${usedReal ? ' (live)' : ' (sample)'}`);
 
     const locationStr = [
       body.city,

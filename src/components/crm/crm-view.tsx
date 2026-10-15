@@ -106,13 +106,36 @@ function getActivityColor(type: string) {
   }
 }
 
+// Module-level fetchers: the effect below only wires their promise results
+// into state, so nothing writes React state synchronously during the effect.
+async function fetchLeadActivities(leadId: string): Promise<Activity[]> {
+  try {
+    const res = await fetch(`/api/leads/${leadId}/activities`);
+    const data = res.ok ? await res.json() : [];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchLeadNotes(leadId: string): Promise<Note[]> {
+  try {
+    const res = await fetch(`/api/leads/${leadId}/notes`);
+    const data = res.ok ? await res.json() : [];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 export function CrmView() {
   const { leads, updateLead } = useLeadStore();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
-  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  // Notes/activities are keyed by the lead they were fetched for: switching
+  // leads reads as "loading" instead of showing stale rows, and nothing has to
+  // be cleared synchronously inside an effect.
+  const [activitiesData, setActivitiesData] = useState<{ leadId: string | null; items: Activity[] }>({ leadId: null, items: [] });
+  const [notesData, setNotesData] = useState<{ leadId: string | null; items: Note[] }>({ leadId: null, items: [] });
   const [newNote, setNewNote] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [activityType, setActivityType] = useState('email_sent');
@@ -126,6 +149,12 @@ export function CrmView() {
     () => leads.find((l) => l.id === selectedLeadId) ?? null,
     [leads, selectedLeadId]
   );
+
+  // Derived selectors: data only shows when it belongs to the selected lead.
+  const activities = activitiesData.leadId === selectedLeadId ? activitiesData.items : [];
+  const notes = notesData.leadId === selectedLeadId ? notesData.items : [];
+  const isLoadingActivities = !!selectedLeadId && activitiesData.leadId !== selectedLeadId;
+  const isLoadingNotes = !!selectedLeadId && notesData.leadId !== selectedLeadId;
 
   const pipelineCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -160,49 +189,29 @@ export function CrmView() {
     });
   }, [leads]);
 
-  const fetchActivities = useCallback(async (leadId: string) => {
-    setIsLoadingActivities(true);
-    try {
-      const res = await fetch(`/api/leads/${leadId}/activities`);
-      if (res.ok) {
-        const data = await res.json();
-        setActivities(Array.isArray(data) ? data : []);
-      } else {
-        setActivities([]);
-      }
-    } catch {
-      setActivities([]);
-    } finally {
-      setIsLoadingActivities(false);
-    }
-  }, []);
+  const fetchActivities = useCallback((leadId: string) =>
+    fetchLeadActivities(leadId).then((items) => setActivitiesData({ leadId, items })),
+  []);
 
-  const fetchNotes = useCallback(async (leadId: string) => {
-    setIsLoadingNotes(true);
-    try {
-      const res = await fetch(`/api/leads/${leadId}/notes`);
-      if (res.ok) {
-        const data = await res.json();
-        setNotes(Array.isArray(data) ? data : []);
-      } else {
-        setNotes([]);
-      }
-    } catch {
-      setNotes([]);
-    } finally {
-      setIsLoadingNotes(false);
-    }
-  }, []);
+  const fetchNotes = useCallback((leadId: string) =>
+    fetchLeadNotes(leadId).then((items) => setNotesData({ leadId, items })),
+  []);
 
   useEffect(() => {
-    if (selectedLeadId) {
-      fetchActivities(selectedLeadId);
-      fetchNotes(selectedLeadId);
-    } else {
-      setActivities([]);
-      setNotes([]);
-    }
-  }, [selectedLeadId, fetchActivities, fetchNotes]);
+    // Deselecting shows empty lists automatically (derived selectors above).
+    if (!selectedLeadId) return;
+    const leadId = selectedLeadId;
+    let cancelled = false;
+    fetchLeadActivities(leadId).then((items) => {
+      if (!cancelled) setActivitiesData({ leadId, items });
+    });
+    fetchLeadNotes(leadId).then((items) => {
+      if (!cancelled) setNotesData({ leadId, items });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLeadId]);
 
   const handleStageChange = useCallback(
     async (leadId: string, newStage: string) => {
@@ -234,7 +243,10 @@ export function CrmView() {
       });
       if (res.ok) {
         const data = await res.json();
-        setNotes((prev) => [data, ...prev]);
+        setNotesData((prev) => ({
+          leadId: selectedLeadId,
+          items: [data, ...(prev.leadId === selectedLeadId ? prev.items : [])],
+        }));
         setNewNote('');
       }
     } catch {
@@ -259,7 +271,10 @@ export function CrmView() {
       });
       if (res.ok) {
         const data = await res.json();
-        setActivities((prev) => [data, ...prev]);
+        setActivitiesData((prev) => ({
+          leadId: selectedLeadId,
+          items: [data, ...(prev.leadId === selectedLeadId ? prev.items : [])],
+        }));
         setActivityTitle('');
         setActivityDescription('');
       }

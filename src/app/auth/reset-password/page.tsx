@@ -20,12 +20,10 @@ function ResetPasswordForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!token) {
-      setError('No reset token found. Please request a new reset link.');
-    }
-  }, [token]);
+  // A missing token is a render-time condition, so it is derived rather than
+  // written into state from an effect.
+  const tokenError = !token ? 'No reset token found. Please request a new reset link.' : null;
+  const displayedError = error ?? tokenError;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,10 +96,10 @@ function ResetPasswordForm() {
             <CardDescription>Enter your new password below</CardDescription>
           </CardHeader>
           <CardContent>
-            {error ? (
+            {displayedError ? (
               <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
                 <AlertCircle className="size-4 shrink-0" />
-                {error}
+                {displayedError}
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">

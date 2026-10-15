@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { chatCompletion, parseAIJson } from '@/lib/ai-client';
 import { checkLimit, trackUsage } from '@/lib/usage';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 import { generateDeterministicInsights } from '@/lib/scoring';
 
 const INSIGHTS_SYSTEM_PROMPT = `You are an expert business analyst specializing in data analytics consulting. Analyze the given business lead and generate deep, actionable insights.
@@ -36,14 +36,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required field: leadId' }, { status: 400 });
     }
 
-    const lead = await db.lead.findUnique({ where: { id: leadId } });
+    const guard = await requirePermission('ai:insights');
+    if (!guard.ok) return guard.response;
+    const { org, session } = guard.auth;
+
+    const lead = await db.lead.findFirst({ where: { id: leadId, orgId: org.id } });
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
-    }
-
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
     }
 
     const limit = await checkLimit(org.id, 'ai_insights');
@@ -109,7 +108,7 @@ Decision Maker: ${lead.decisionMaker || 'Unknown'} (${lead.decisionMakerTitle ||
       console.warn('Failed to update lead insights in database:', dbError);
     }
 
-    await trackUsage(org.id, 'system', 'ai_insights', `Generated insights for ${lead.companyName}`);
+    await trackUsage(org.id, session.userId, 'ai_insights', `Generated insights for ${lead.companyName}`);
 
     return NextResponse.json(insights);
   } catch (error) {

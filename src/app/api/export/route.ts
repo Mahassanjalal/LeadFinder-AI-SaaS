@@ -2,17 +2,16 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkLimit, trackUsage } from '@/lib/usage';
 import { PLANS } from '@/lib/plans';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const format = (searchParams.get('format') || 'csv').toLowerCase();
 
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
-    }
+    const guard = await requirePermission('export');
+    if (!guard.ok) return guard.response;
+    const { org, session } = guard.auth;
 
     const planConfig = PLANS[org.plan as keyof typeof PLANS];
 
@@ -46,7 +45,7 @@ export async function GET(request: NextRequest) {
     const filteredLeads = industry ? leads.filter((l) => l.industry === industry) : leads;
 
     if (format === 'json') {
-      await trackUsage(org.id, 'system', 'export', `Exported ${filteredLeads.length} leads as JSON`);
+      await trackUsage(org.id, session.userId, 'export', `Exported ${filteredLeads.length} leads as JSON`);
       return new NextResponse(JSON.stringify(filteredLeads, null, 2), {
         headers: {
           'Content-Type': 'application/json',
@@ -92,6 +91,9 @@ export async function GET(request: NextRequest) {
     ].map(escapeCsv).join(','));
 
     const csv = [headers.join(','), ...rows].join('\n');
+
+    // Track CSV exports too so the per-plan export limit is actually consumed.
+    await trackUsage(org.id, session.userId, 'export', `Exported ${filteredLeads.length} leads as CSV`);
 
     return new NextResponse(csv, {
       headers: {

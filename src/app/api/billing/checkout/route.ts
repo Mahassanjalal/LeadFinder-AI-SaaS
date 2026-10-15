@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db } from '@/lib/db';
 import { PLANS, type PlanKey } from '@/lib/plans';
-import { getSessionOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -25,10 +25,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sessionOrg = await getSessionOrg();
-    if (!sessionOrg) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    // Billing changes are Owner-only (README permission matrix).
+    const guard = await requirePermission('billing');
+    if (!guard.ok) return guard.response;
+    const { session: sessionOrg, org } = guard.auth;
 
     const body = await request.json();
     const plan = body.plan as PlanKey;
@@ -42,11 +42,6 @@ export async function POST(request: NextRequest) {
         { error: 'Stripe price not configured for this plan.' },
         { status: 503 }
       );
-    }
-
-    const org = await db.organization.findUnique({ where: { id: sessionOrg.orgId } });
-    if (!org) {
-      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
     const memberCount = await db.membership.count({ where: { orgId: org.id } });
@@ -63,8 +58,10 @@ export async function POST(request: NextRequest) {
       ],
       client_reference_id: org.id,
       metadata: { orgId: org.id, plan },
-      success_url: `${new URL(request.url).origin}/settings?tab=billing&status=success`,
-      cancel_url: `${new URL(request.url).origin}/settings?tab=billing&status=canceled`,
+      // Settings is an in-app SPA view on `/`, not a route — a bare /settings
+      // URL 404s, so the return URL must target / with view + tab params.
+      success_url: `${new URL(request.url).origin}/?view=settings&tab=billing&status=success`,
+      cancel_url: `${new URL(request.url).origin}/?view=settings&tab=billing&status=canceled`,
       subscription_data: {
         metadata: { orgId: org.id, plan },
       },

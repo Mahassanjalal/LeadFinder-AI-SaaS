@@ -1,10 +1,34 @@
 import { db } from '@/lib/db';
 import { PLANS } from '@/lib/plans';
 
-export async function trackUsage(orgId: string, userId: string, type: string, description?: string, credits = 1) {
+// UsageRecord.userId is a required foreign key, so every record must reference
+// a real user. Callers used to pass the literal 'system', which made Prisma
+// throw a foreign-key error that was swallowed below — meaning NO usage was ever
+// recorded and credit/limit enforcement silently never worked.
+// Resolves: the acting user (if they belong to the org) → org owner → any member.
+async function resolveUsageUser(orgId: string, userId?: string | null): Promise<string | null> {
+  if (userId) {
+    const membership = await db.membership.findFirst({ where: { orgId, userId } });
+    if (membership) return membership.userId;
+  }
+  const owner = await db.membership.findFirst({ where: { orgId, role: 'owner' } });
+  if (owner) return owner.userId;
+  const member = await db.membership.findFirst({ where: { orgId } });
+  if (member) return member.userId;
+  const user = await db.user.findFirst();
+  return user?.id ?? null;
+}
+
+export async function trackUsage(orgId: string, userId: string | null | undefined, type: string, description?: string, credits = 1) {
   try {
+    const resolvedUserId = await resolveUsageUser(orgId, userId);
+    if (!resolvedUserId) {
+      console.warn(`Usage not recorded for org ${orgId}: no user available to attribute "${type}" to.`);
+      return false;
+    }
+
     await db.usageRecord.create({
-      data: { orgId, userId, type, description, creditsUsed: credits },
+      data: { orgId, userId: resolvedUserId, type, description, creditsUsed: credits },
     });
 
     // Update subscription credits used for current month

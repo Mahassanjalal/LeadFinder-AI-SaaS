@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
+import { pickLeadFields } from '@/lib/lead-input';
 import { logActivity } from '@/lib/activity';
 
 export async function GET(
@@ -8,10 +9,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const guard = await requirePermission('leads:read');
+    if (!guard.ok) return guard.response;
+
     const { id } = await params;
-    const org = await resolveOrg();
     const lead = await db.lead.findFirst({
-      where: { id, ...(org ? { orgId: org.id } : {}) },
+      where: { id, orgId: guard.auth.org.id },
       include: {
         notes: { orderBy: { createdAt: 'desc' } },
         activities: { orderBy: { createdAt: 'desc' } },
@@ -32,16 +35,26 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const guard = await requirePermission('leads:write');
+    if (!guard.ok) return guard.response;
+
     const { id } = await params;
     const body = await request.json();
-    const org = await resolveOrg();
-    const lead = await db.lead.findFirst({ where: { id, ...(org ? { orgId: org.id } : {}) } });
+    const org = guard.auth.org;
+
+    const lead = await db.lead.findFirst({ where: { id, orgId: org.id } });
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
+
+    const fields = pickLeadFields(body);
+    if (Object.keys(fields).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
+
     const updated = await db.lead.update({
       where: { id },
-      data: body,
+      data: fields,
     });
 
     // Auto-log activities for meaningful field changes
@@ -70,9 +83,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const guard = await requirePermission('leads:delete');
+    if (!guard.ok) return guard.response;
+
     const { id } = await params;
-    const org = await resolveOrg();
-    const lead = await db.lead.findFirst({ where: { id, ...(org ? { orgId: org.id } : {}) } });
+    const lead = await db.lead.findFirst({ where: { id, orgId: guard.auth.org.id } });
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }

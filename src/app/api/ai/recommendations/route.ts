@@ -1,7 +1,7 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { chatCompletion, parseAIJson } from '@/lib/ai-client';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 
 // ====== Deterministic fallback ======
 
@@ -192,7 +192,11 @@ Rules:
 
 export async function GET() {
   try {
+    const guard = await requirePermission('analytics');
+    if (!guard.ok) return guard.response;
+
     const leads = await db.lead.findMany({
+      where: { orgId: guard.auth.org.id },
       orderBy: { leadScore: 'desc' },
     });
 

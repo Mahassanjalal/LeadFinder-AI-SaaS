@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 import { deterministicScore } from '@/lib/scoring';
 
 // Lightweight CSV parser that handles quoted fields, commas, and newlines.
@@ -77,10 +77,9 @@ const FLOAT_FIELDS = new Set(['googleRating', 'confidenceScore']);
 
 export async function POST(request: NextRequest) {
   try {
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    const guard = await requirePermission('leads:write');
+    if (!guard.ok) return guard.response;
+    const { org, session } = guard.auth;
 
     const formData = await request.formData();
     const file = formData.get('file');
@@ -106,7 +105,7 @@ export async function POST(request: NextRequest) {
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const data: Record<string, unknown> = { orgId: org.id };
+      const data: Record<string, unknown> = { orgId: org.id, createdBy: session.userId };
 
       for (let c = 0; c < colMap.length; c++) {
         const field = colMap[c];

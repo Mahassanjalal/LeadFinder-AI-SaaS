@@ -1,7 +1,5 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { db } from '@/lib/db';
-import type { Organization } from '@prisma/client';
 
 export interface SessionOrg {
   userId: string;
@@ -13,8 +11,7 @@ export interface SessionOrg {
 }
 
 // Resolves the authenticated user's organization from the JWT session.
-// Returns null when unauthenticated. Falls back to the first org only when
-// no session exists (demo/seed mode) so the app remains usable without login.
+// Returns null when unauthenticated.
 export async function getSessionOrg(): Promise<SessionOrg | null> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !session?.user?.orgId) return null;
@@ -29,12 +26,7 @@ export async function getSessionOrg(): Promise<SessionOrg | null> {
   };
 }
 
-// Resolves the org record scoped to the session. In demo mode (no session)
-// it returns the first org so seed data stays visible.
-export async function resolveOrg(): Promise<Organization | null> {
-  const sessionOrg = await getSessionOrg();
-  if (sessionOrg) {
-    return db.organization.findUnique({ where: { id: sessionOrg.orgId } });
-  }
-  return db.organization.findFirst();
-}
+// Note: routes must resolve their tenant through `requireAuth` /
+// `requirePermission` in lib/api-auth.ts (which wraps getSessionOrg above).
+// A previous `resolveOrg()` helper silently returned the FIRST organization for
+// anonymous requests, leaking tenant data; it has been removed deliberately.

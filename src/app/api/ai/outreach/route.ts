@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { chatCompletion, parseAIJson } from '@/lib/ai-client';
 import { db } from '@/lib/db';
 import { checkLimit, trackUsage } from '@/lib/usage';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 import { logActivity } from '@/lib/activity';
 
 type MessageType = 'cold_email' | 'linkedin_connection' | 'linkedin_message' | 'follow_up' | 'proposal_intro' | 'call_script' | 'demo_request';
@@ -264,10 +264,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const org = await db.organization.findFirst();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
-    }
+    const guard = await requirePermission('ai:outreach');
+    if (!guard.ok) return guard.response;
+    const { org, session } = guard.auth;
 
     const limit = await checkLimit(org.id, 'ai_outreach');
     if (!limit.allowed) {
@@ -303,7 +302,7 @@ export async function POST(request: NextRequest) {
     let generator = fallbackGenerators[messageType] || fallbackGenerators[normalizedType] || fallbackGenerators['cold_email'];
 
     const result = generator(body);
-    await trackUsage(org.id, 'system', 'ai_outreach', `Generated ${messageType} for ${body.companyName}`);
+    await trackUsage(org.id, session.userId, 'ai_outreach', `Generated ${messageType} for ${body.companyName}`);
 
     // Auto-log outreach generation as an activity on the lead
     if (body.leadId) {

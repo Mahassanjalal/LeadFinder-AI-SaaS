@@ -1,14 +1,13 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { PLANS } from '@/lib/plans';
-import { resolveOrg } from '@/lib/session';
+import { requireAuth, requirePermission } from '@/lib/api-auth';
 
 export async function GET() {
   try {
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
+    const guard = await requireAuth();
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     const sub = await db.subscription.findFirst({
       where: { orgId: org.id },
@@ -85,10 +84,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
 
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
+    // Plan changes are Owner-only (README permission matrix).
+    const guard = await requirePermission('billing');
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     const planConfig = PLANS[newPlan as keyof typeof PLANS];
     const now = new Date();

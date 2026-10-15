@@ -1,13 +1,12 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { resolveOrg } from '@/lib/session';
+import { requirePermission } from '@/lib/api-auth';
 
 export async function GET() {
   try {
-    const org = await resolveOrg();
-    if (!org) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 });
-    }
+    const guard = await requirePermission('analytics');
+    if (!guard.ok) return guard.response;
+    const org = guard.auth.org;
 
     const leads = await db.lead.findMany({
       where: { orgId: org.id },

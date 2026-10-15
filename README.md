@@ -8,6 +8,42 @@ A **SaaS platform** for AI-powered lead discovery, scoring, and outreach, built 
 
 ---
 
+## Local Setup & Verification
+
+```bash
+npm ci                      # or: bun install
+cp .env.example .env        # then set NEXTAUTH_SECRET (openssl rand -base64 32)
+npm run db:generate         # generate the Prisma client
+npm run dev                 # http://localhost:3000
+```
+
+Seed data ships in `prisma/data/jobs.db` (see [Demo Accounts](#demo-accounts)).
+`DATABASE_URL` in `.env` is resolved relative to `prisma/`, e.g. `file:./data/jobs.db`.
+
+```bash
+npm run lint                # ESLint (includes react-hooks rules)
+npx tsc --noEmit            # typecheck
+npm run build               # production build
+bash scripts/smoke-test.sh  # 49 API checks against a running server
+```
+
+`scripts/smoke-test.sh` asserts the security invariants of the API: anonymous
+requests get **401**, viewer/analyst attempts at privileged actions get **403**,
+foreign-tenant ids get **404**, lead creation rejects mass assignment, and
+export/credit usage rows are actually written (it restores the seed database
+afterwards).
+
+### Server-side authorization
+
+Every API route resolves its caller through `requireAuth`, `requirePermission`
+(against the [role matrix](#role-based-access-control)) or `requireLead` in
+`src/lib/api-auth.ts`, and scopes every query by `orgId`. Client-side gating
+(`canUseFeature`, plan badges, PRO badges) is UX only — the server enforces the
+same rules. Session claims (role/plan) are refreshed from the database on each
+request, so plan changes and role changes apply without re-login.
+
+---
+
 ## Market Research Summary
 
 ### Competitive Landscape
@@ -110,29 +146,45 @@ Our pricing is positioned **below Apollo and Clay** while offering **AI scoring 
 ### 2.1 Authentication
 - `GET/POST /api/auth/[...nextauth]` — NextAuth.js handlers (credentials provider)
 - `POST /api/auth/register` — User registration (creates user + org + membership + subscription)
+- `POST /api/auth/forgot-password` — reset token (link returned in dev; email provider pending)
+- `POST /api/auth/reset-password` — consume a reset token
+- `GET /api/auth/verify-email` — consume an email-verification token
 
-### 2.2 Organization & Billing
-- `GET /api/organizations` — Current org info, members, stats
-- `GET /api/billing` — Subscription details, usage breakdown, credit balance, limits
-- `POST /api/billing` — Plan change (simulated — in production: Stripe integration)
+### 2.2 Organization & Billing (role-gated)
+- `GET /api/organizations` — current org info, members, stats (any member)
+- `PATCH /api/organizations` — rename org (**settings**: owner/admin)
+- `PATCH /api/organizations/members/[id]` — change a member's role (**members:manage**, org-scoped, owner record protected)
+- `GET /api/billing` — subscription details, usage breakdown, credit balance, limits (any member)
+- `POST /api/billing` — direct plan change, e.g. downgrade to Free (**billing**: owner)
+- `POST /api/billing/checkout` — Stripe Checkout session for paid plans (**billing**: owner)
+- `POST /api/billing/webhook` — Stripe webhook (signature-verified)
+- `POST /api/teams/invite` — create an invite link (**members:invite**, seat-limit enforced)
+- `GET/POST /api/invites/[token]` — validate / accept an invite (public, token-scoped)
 
 ### 2.3 Lead CRUD (org-scoped)
-- `GET /api/leads` — list (filtered by orgId)
-- `GET /api/leads/[id]` — single lead detail
-- `POST /api/leads` — create (auto-assigned to org)
-- `PATCH /api/leads/[id]` — update
-- `DELETE /api/leads/[id]` — remove
+- `GET /api/leads` — list (**leads:read**, filtered by orgId)
+- `GET /api/leads/[id]` — single lead detail (**leads:read**)
+- `POST /api/leads` — create (auto-assigned to org + creator; whitelisted fields)
+- `PATCH /api/leads/[id]` — update (**leads:write**, whitelisted fields — no `orgId`/`id`/`createdBy` injection)
+- `DELETE /api/leads/[id]` — remove (**leads:delete**: owner/admin)
+- `GET/POST /api/leads/[id]/notes` — notes (**leads:read** / **leads:write**, lead must belong to the caller's org)
+- `GET/POST /api/leads/[id]/activities` — activity log (same rules)
+- `POST /api/import` — CSV import (**leads:write**)
+- `GET/POST /api/saved-searches`, `DELETE /api/saved-searches/[id]` — saved searches (org-scoped)
 
-### 2.4 AI Features
-- `POST /api/ai/score` — score/re-score a lead
-- `POST /api/ai/insights` — generate business insights
-- `POST /api/ai/outreach` — generate cold outreach messages
-- `POST /api/ai/discover` — discover businesses by location
-- `POST /api/ai/recommendations` — get AI recommendations
+### 2.4 AI Features (credit-metered)
+- `POST /api/ai/score` — score/re-score a lead (**ai:score**)
+- `POST /api/ai/insights` — generate business insights (**ai:insights**)
+- `POST /api/ai/outreach` — generate cold outreach messages (**ai:outreach**)
+- `POST /api/ai/discover` — discover businesses by location (**ai:discover**)
+- `GET /api/ai/recommendations` — AI recommendations across the org's leads (**analytics**)
 
 ### 2.5 Analytics & Export (org-scoped)
 - `GET /api/analytics` — comprehensive analytics (KPIs, distributions, trends)
-- `GET /api/export` — CSV/JSON export with plan-based gating
+- `GET /api/export` — CSV/JSON export with plan-based gating (**export**); each export is recorded as usage
+
+> Permissions in parentheses are enforced by `requirePermission` in
+> `src/lib/api-auth.ts`; anonymous callers always receive **401**.
 
 ---
 
