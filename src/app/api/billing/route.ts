@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { PLANS } from '@/lib/plans';
+import { PLANS, type PlanKey } from '@/lib/plans';
 import { requireAuth, requirePermission } from '@/lib/api-auth';
 
 export async function GET() {
@@ -78,9 +78,9 @@ export async function GET() {
 // POST: Change plan (simulated)
 export async function POST(request: NextRequest) {
   try {
-    const { plan: newPlan } = await request.json();
+    const { plan: newPlan } = (await request.json()) as { plan?: string };
 
-    if (!newPlan || !PLANS[newPlan]) {
+    if (!newPlan || !(newPlan in PLANS)) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
 
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     if (!guard.ok) return guard.response;
     const org = guard.auth.org;
 
-    const planConfig = PLANS[newPlan as keyof typeof PLANS];
+    const planConfig = PLANS[newPlan as PlanKey];
     const now = new Date();
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);

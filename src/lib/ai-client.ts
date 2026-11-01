@@ -1,17 +1,17 @@
-// AI client backed by Google Gemini via the OpenAI-compatible endpoint.
-// Set GEMINI_API_KEY in .env. Falls back to deterministic generators in the
-// calling routes if the key is missing or the request fails.
+// AI client backed by Freebuff API (OpenAI-compatible).
+// Set OPENAI_API_KEY in .env (points to https://freebuff.com/api/v1/paid).
+// Falls back to deterministic generators in the calling routes if the key is missing or the request fails.
 import OpenAI from 'openai';
 
 let _client: OpenAI | null = null;
 
 function getClient(): OpenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   if (!_client) {
     _client = new OpenAI({
       apiKey,
-      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      baseURL: 'https://freebuff.com/api/v1/paid',
     });
   }
   return _client;
@@ -20,12 +20,12 @@ function getClient(): OpenAI | null {
 export async function chatCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
   const client = getClient();
   if (!client) {
-    console.warn('GEMINI_API_KEY not set — AI features will use deterministic fallback.');
+    console.warn('OPENAI_API_KEY not set — AI features will use deterministic fallback.');
     return '';
   }
   try {
     const response = await client.chat.completions.create({
-      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -35,7 +35,7 @@ export async function chatCompletion(systemPrompt: string, userPrompt: string): 
     });
     return response.choices?.[0]?.message?.content || '';
   } catch (error) {
-    console.error('Gemini chat completion failed:', error);
+    console.error('Freebuff API chat completion failed:', error);
     return '';
   }
 }

@@ -24,6 +24,8 @@ import type { Organization, UsageData } from '@/lib/types';
 import { toast } from 'sonner';
 import { canUseFeature } from '@/lib/auth-helpers';
 
+type FeatureFlags = typeof PLANS[PlanKey]['features'];
+
 export function SettingsView({ initialTab }: { initialTab?: string } = {}) {
   const { data: session } = useSession();
   const user = session?.user as Record<string, unknown> | undefined;
@@ -403,7 +405,7 @@ export function SettingsView({ initialTab }: { initialTab?: string } = {}) {
                         </div>
                         <Separator className="my-2" />
                         <ul className="space-y-1.5">
-                          {[
+                          {([
                             { f: 'tableview', l: 'Table view' },
                             { f: 'cardview', l: 'Card view' },
                             { f: 'kanbanview', l: 'Kanban board' },
@@ -412,7 +414,7 @@ export function SettingsView({ initialTab }: { initialTab?: string } = {}) {
                             { f: 'apiAccess', l: 'API access' },
                             { f: 'customAiScoring', l: 'Custom AI scoring' },
                             { f: 'sso', l: 'SSO' },
-                          ].filter(item => plan.features[item.f]).slice(0, 5).map((item) => (
+                          ] as { f: keyof FeatureFlags; l: string }[]).filter(item => plan.features[item.f]).slice(0, 5).map((item) => (
                             <li key={item.l} className="flex items-center gap-2 text-xs text-muted-foreground">
                               <Check className="h-3 w-3 text-emerald-400 shrink-0" />
                               {item.l}
